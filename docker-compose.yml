@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      POSTGRES_HOST: postgres
     depends_on:
       postgres:
         condition: service_healthy
@@ -16,6 +18,8 @@ services:
       - tools
     env_file:
       - .env
+    environment:
+      POSTGRES_HOST: postgres
     command: ["alembic", "upgrade", "head"]
     depends_on:
       postgres:

@@ -16,7 +16,7 @@ target_metadata = None
 
 
 def get_database_url() -> str:
-    url = str(Settings().database_url)
+    url = Settings().resolved_database_url
     if url.startswith("postgresql://"):
         return url.replace("postgresql://", "postgresql+psycopg://", 1)
     return url

@@ -1449,7 +1449,7 @@ def main() -> None:
         level=log_level,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    bot = TimeClockBot(Database(str(settings.database_url)), dev_guild_id=settings.dev_guild_id)
+    bot = TimeClockBot(Database(settings.resolved_database_url), dev_guild_id=settings.dev_guild_id)
     bot.run(settings.discord_token)
 
 
