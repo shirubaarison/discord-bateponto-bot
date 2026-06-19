@@ -13,6 +13,7 @@ from bate_ponto_bot.config import Settings
 from bate_ponto_bot.db import Database, TimeEntry, utcnow, worked_seconds
 
 LOGGER = logging.getLogger(__name__)
+INTERACTION_LOGGER = logging.getLogger("bate_ponto_bot.interactions")
 LOCAL_TIMEZONE = ZoneInfo("America/Fortaleza")
 
 
@@ -71,6 +72,15 @@ class TimeClockBot(commands.Bot):
         if settings.control_message_ttl_seconds <= 0:
             return
 
+        self.log_interaction(
+            "control_message",
+            "cleanup_scheduled",
+            guild_id=message.guild.id,
+            user_id=message.author.id,
+            channel_id=message.channel.id,
+            message_id=message.id,
+            delay_seconds=settings.control_message_ttl_seconds,
+        )
         self._schedule_control_message_delete(
             message,
             settings.control_message_ttl_seconds,
@@ -144,6 +154,15 @@ class TimeClockBot(commands.Bot):
             started_at = utcnow()
             deadline_at = started_at + timedelta(seconds=settings.absence_tolerance_seconds)
             updated = await self.db.set_absence_deadline(entry, started_at, deadline_at)
+            self.log_interaction(
+                "voice_absence",
+                "started",
+                guild_id=member.guild.id,
+                user_id=member.id,
+                channel_id=before.channel.id if before.channel else None,
+                entry_id=updated.id,
+                deadline_at=deadline_at.isoformat(),
+            )
             self._schedule_absence_check(member.guild.id, member.id, updated.id, deadline_at)
             await self.delete_point_status_message(member.guild, updated.id)
             await self.notify_member(
@@ -183,6 +202,14 @@ class TimeClockBot(commands.Bot):
             if entry.absence_deadline_at:
                 await self.db.clear_absence(entry)
                 self._cancel_absence_check(entry.id)
+                self.log_interaction(
+                    "voice_absence",
+                    "cleared",
+                    guild_id=member.guild.id,
+                    user_id=member.id,
+                    channel_id=after.channel.id if after.channel else None,
+                    entry_id=entry.id,
+                )
                 await self.delete_point_status_message(member.guild, entry.id)
                 await self.notify_member(
                     member,
@@ -216,6 +243,14 @@ class TimeClockBot(commands.Bot):
 
             if entry.status == "paused" and entry.pause_reason == "auto_absence":
                 finished = await self.db.finish_entry(entry, close_reason="auto_absence")
+                self.log_interaction(
+                    "voice_absence",
+                    "closed_on_return",
+                    guild_id=member.guild.id,
+                    user_id=member.id,
+                    channel_id=after.channel.id if after.channel else None,
+                    entry_id=finished.id,
+                )
                 await self.delete_point_status_message(member.guild, entry.id)
                 await self.notify_member(
                     member,
@@ -253,6 +288,14 @@ class TimeClockBot(commands.Bot):
         if entry is None:
             return
 
+        self.log_interaction(
+            "voice_absence",
+            "return_after_auto_closure",
+            guild_id=member.guild.id,
+            user_id=member.id,
+            channel_id=after.channel.id if after.channel else None,
+            entry_id=entry.id,
+        )
         await self.delete_point_status_message(member.guild, entry.id)
         await self.notify_member(
             member,
@@ -574,6 +617,14 @@ class TimeClockBot(commands.Bot):
                 ended_at=deadline_at,
                 close_reason="auto_absence",
             )
+            self.log_interaction(
+                "voice_absence",
+                "auto_closed",
+                guild_id=guild_id,
+                user_id=user_id,
+                entry_id=finished.id,
+                deadline_at=deadline_at.isoformat(),
+            )
             await self.delete_point_status_message(guild, entry.id)
             await self.notify_member(
                 member,
@@ -613,12 +664,52 @@ class TimeClockBot(commands.Bot):
         pending_absences = await self.db.list_pending_absences()
         for entry in pending_absences:
             if entry.absence_deadline_at:
+                self.log_interaction(
+                    "voice_absence",
+                    "restored_check",
+                    guild_id=entry.guild_id,
+                    user_id=entry.user_id,
+                    entry_id=entry.id,
+                    deadline_at=entry.absence_deadline_at.isoformat(),
+                )
                 self._schedule_absence_check(
                     entry.guild_id,
                     entry.user_id,
                     entry.id,
                     entry.absence_deadline_at,
                 )
+
+    def log_interaction(
+        self,
+        action: str,
+        outcome: str,
+        *,
+        interaction: discord.Interaction | None = None,
+        guild_id: int | None = None,
+        user_id: int | None = None,
+        channel_id: int | None = None,
+        entry_id: int | None = None,
+        **extra: object,
+    ) -> None:
+        if not INTERACTION_LOGGER.isEnabledFor(logging.INFO):
+            return
+
+        if interaction is not None:
+            guild_id = guild_id or interaction.guild_id
+            user_id = user_id or interaction.user.id
+            channel_id = channel_id or interaction.channel_id
+
+        values: dict[str, object] = {
+            "action": action,
+            "outcome": outcome,
+            "guild_id": guild_id,
+            "user_id": user_id,
+            "channel_id": channel_id,
+            "entry_id": entry_id,
+            **extra,
+        }
+        message = " ".join(f"{key}={value}" for key, value in values.items() if value is not None)
+        INTERACTION_LOGGER.info(message)
 
 
 class TimeClockView(discord.ui.View):
@@ -638,11 +729,18 @@ class TimeClockView(discord.ui.View):
 
         allowed, reason = await can_use_voice(self.bot, member)
         if not allowed:
+            self.bot.log_interaction("button_start", "denied_voice", interaction=interaction)
             await self.bot.respond_control_interaction(interaction, reason)
             return
 
         existing = await self.bot.db.get_open_entry(member.guild.id, member.id)
         if existing:
+            self.bot.log_interaction(
+                "button_start",
+                "denied_already_open",
+                interaction=interaction,
+                entry_id=existing.id,
+            )
             await self.bot.respond_control_interaction(
                 interaction,
                 "Você já tem um ponto em aberto.",
@@ -650,6 +748,13 @@ class TimeClockView(discord.ui.View):
             return
 
         entry = await self.bot.db.start_entry(member.guild.id, member.id)
+        self.bot.log_interaction(
+            "button_start",
+            "success",
+            interaction=interaction,
+            channel_id=member.voice.channel.id if member.voice and member.voice.channel else None,
+            entry_id=entry.id,
+        )
         await self.bot.respond_control_embed(
             interaction,
             "Ponto ativo",
@@ -693,6 +798,9 @@ class TimeClockView(discord.ui.View):
 
         entry = await self.bot.db.get_open_entry(member.guild.id, member.id)
         if not entry:
+            self.bot.log_interaction(
+                "button_finish", "denied_no_open_entry", interaction=interaction
+            )
             await self.bot.respond_control_interaction(
                 interaction,
                 "Você não tem ponto em aberto.",
@@ -701,6 +809,13 @@ class TimeClockView(discord.ui.View):
 
         finished = await self.bot.db.finish_entry(entry)
         self.bot._cancel_absence_check(entry.id)
+        self.bot.log_interaction(
+            "button_finish",
+            "success",
+            interaction=interaction,
+            entry_id=finished.id,
+            worked_seconds=worked_seconds(finished),
+        )
         await self.bot.delete_point_status_message(member.guild, entry.id)
         await self.bot.respond_control_embed(
             interaction,
@@ -742,6 +857,11 @@ class TimeClockView(discord.ui.View):
 
         entry = await self.bot.db.get_open_entry(member.guild.id, member.id)
         if not entry:
+            self.bot.log_interaction(
+                "button_pause_resume",
+                "denied_no_open_entry",
+                interaction=interaction,
+            )
             await self.bot.respond_control_interaction(
                 interaction,
                 "Você não tem ponto em aberto.",
@@ -751,6 +871,13 @@ class TimeClockView(discord.ui.View):
         if entry.status == "active":
             paused = await self.bot.db.pause_entry(entry, reason="manual")
             self.bot._cancel_absence_check(entry.id)
+            self.bot.log_interaction(
+                "button_pause_resume",
+                "paused",
+                interaction=interaction,
+                entry_id=paused.id,
+                worked_seconds=worked_seconds(paused),
+            )
             await self.bot.delete_point_status_message(member.guild, entry.id)
             await self.bot.respond_control_embed(
                 interaction,
@@ -778,10 +905,24 @@ class TimeClockView(discord.ui.View):
 
         allowed, reason = await can_use_voice(self.bot, member)
         if not allowed:
+            self.bot.log_interaction(
+                "button_pause_resume",
+                "denied_voice",
+                interaction=interaction,
+                entry_id=entry.id,
+            )
             await self.bot.respond_control_interaction(interaction, reason)
             return
 
         resumed = await self.bot.db.resume_entry(entry)
+        self.bot.log_interaction(
+            "button_pause_resume",
+            "resumed",
+            interaction=interaction,
+            channel_id=member.voice.channel.id if member.voice and member.voice.channel else None,
+            entry_id=resumed.id,
+            worked_seconds=worked_seconds(resumed),
+        )
         await self.bot.delete_point_status_message(member.guild, entry.id)
         await self.bot.respond_control_embed(
             interaction,
@@ -823,12 +964,22 @@ class TimeClockView(discord.ui.View):
 
         entry = await self.bot.db.get_open_entry(member.guild.id, member.id)
         if not entry:
+            self.bot.log_interaction(
+                "button_status", "denied_no_open_entry", interaction=interaction
+            )
             await self.bot.respond_control_interaction(
                 interaction,
                 "Você não tem ponto em aberto.",
             )
             return
 
+        self.bot.log_interaction(
+            "button_status",
+            "success",
+            interaction=interaction,
+            entry_id=entry.id,
+            status=entry.status,
+        )
         status = "ativo" if entry.status == "active" else "pausado"
         status_title = "Ponto ativo" if entry.status == "active" else "Ponto pausado"
         status_color = discord.Color.green() if entry.status == "active" else discord.Color.orange()
@@ -861,12 +1012,19 @@ class TimeClockView(discord.ui.View):
 
         history = await self.bot.db.list_history(member.guild.id, member.id)
         if not history:
+            self.bot.log_interaction("button_history", "empty", interaction=interaction)
             await self.bot.respond_control_interaction(
                 interaction,
                 "Você ainda não tem histórico.",
             )
             return
 
+        self.bot.log_interaction(
+            "button_history",
+            "success",
+            interaction=interaction,
+            count=len(history),
+        )
         fields = [
             (
                 format_dt(entry.started_at),
@@ -907,6 +1065,12 @@ class ConfigGroup(app_commands.Group):
             return
 
         if not is_text_app_channel(canal):
+            self.bot.log_interaction(
+                "config_painel",
+                "denied_invalid_channel_type",
+                interaction=interaction,
+                channel_id=canal.id,
+            )
             await interaction.response.send_message(
                 "Selecione um canal de texto para publicar o painel.",
                 ephemeral=True,
@@ -915,6 +1079,12 @@ class ConfigGroup(app_commands.Group):
 
         channel = await resolve_app_channel(canal)
         if not isinstance(channel, discord.TextChannel):
+            self.bot.log_interaction(
+                "config_painel",
+                "denied_channel_inaccessible",
+                interaction=interaction,
+                channel_id=canal.id,
+            )
             await interaction.response.send_message(
                 "Não consigo acessar esse canal. "
                 "Dê ao bot permissão de ver e enviar mensagens nele.",
@@ -925,6 +1095,13 @@ class ConfigGroup(app_commands.Group):
         await interaction.response.defer(ephemeral=True)
         message = await self.bot.send_control_panel(channel)
         await self.bot.db.set_control_channel(guild.id, channel.id, message.id)
+        self.bot.log_interaction(
+            "config_painel",
+            "success",
+            interaction=interaction,
+            channel_id=channel.id,
+            message_id=message.id,
+        )
         await interaction.followup.send(f"Painel publicado em {channel.mention}.", ephemeral=True)
 
     @app_commands.command(name="logs", description="Define o canal de auditoria.")
@@ -939,6 +1116,12 @@ class ConfigGroup(app_commands.Group):
             return
 
         if not is_text_app_channel(canal):
+            self.bot.log_interaction(
+                "config_logs",
+                "denied_invalid_channel_type",
+                interaction=interaction,
+                channel_id=canal.id,
+            )
             await interaction.response.send_message(
                 "Selecione um canal de texto para os logs.",
                 ephemeral=True,
@@ -947,6 +1130,12 @@ class ConfigGroup(app_commands.Group):
 
         channel = await resolve_app_channel(canal)
         if not isinstance(channel, discord.TextChannel):
+            self.bot.log_interaction(
+                "config_logs",
+                "denied_channel_inaccessible",
+                interaction=interaction,
+                channel_id=canal.id,
+            )
             await interaction.response.send_message(
                 "Não consigo acessar esse canal. "
                 "Dê ao bot permissão de ver e enviar mensagens nele.",
@@ -955,6 +1144,12 @@ class ConfigGroup(app_commands.Group):
             return
 
         await self.bot.db.set_audit_channel(guild.id, channel.id)
+        self.bot.log_interaction(
+            "config_logs",
+            "success",
+            interaction=interaction,
+            channel_id=channel.id,
+        )
         await interaction.response.send_message(
             f"Logs configurados em {channel.mention}.",
             ephemeral=True,
@@ -975,6 +1170,12 @@ class ConfigGroup(app_commands.Group):
             return
 
         if not is_voice_app_channel(canal):
+            self.bot.log_interaction(
+                "config_voz_adicionar",
+                "denied_invalid_channel_type",
+                interaction=interaction,
+                channel_id=canal.id,
+            )
             await interaction.response.send_message(
                 "Selecione um canal de voz para permitir o ponto.",
                 ephemeral=True,
@@ -983,6 +1184,12 @@ class ConfigGroup(app_commands.Group):
 
         channel = await resolve_app_channel(canal)
         if not isinstance(channel, discord.VoiceChannel | discord.StageChannel):
+            self.bot.log_interaction(
+                "config_voz_adicionar",
+                "denied_channel_inaccessible",
+                interaction=interaction,
+                channel_id=canal.id,
+            )
             await interaction.response.send_message(
                 "Não consigo acessar esse canal de voz. Dê ao bot permissão de ver o canal.",
                 ephemeral=True,
@@ -990,6 +1197,12 @@ class ConfigGroup(app_commands.Group):
             return
 
         await self.bot.db.add_allowed_voice_channel(guild.id, channel.id)
+        self.bot.log_interaction(
+            "config_voz_adicionar",
+            "success",
+            interaction=interaction,
+            channel_id=channel.id,
+        )
         await interaction.response.send_message(f"{channel.mention} permitido.", ephemeral=True)
 
     @app_commands.command(name="voz-remover", description="Remove um canal de voz permitido.")
@@ -1004,6 +1217,12 @@ class ConfigGroup(app_commands.Group):
             return
 
         if not is_voice_app_channel(canal):
+            self.bot.log_interaction(
+                "config_voz_remover",
+                "denied_invalid_channel_type",
+                interaction=interaction,
+                channel_id=canal.id,
+            )
             await interaction.response.send_message(
                 "Selecione um canal de voz para remover.",
                 ephemeral=True,
@@ -1012,6 +1231,12 @@ class ConfigGroup(app_commands.Group):
 
         channel = await resolve_app_channel(canal)
         if not isinstance(channel, discord.VoiceChannel | discord.StageChannel):
+            self.bot.log_interaction(
+                "config_voz_remover",
+                "denied_channel_inaccessible",
+                interaction=interaction,
+                channel_id=canal.id,
+            )
             await interaction.response.send_message(
                 "Não consigo acessar esse canal de voz. Dê ao bot permissão de ver o canal.",
                 ephemeral=True,
@@ -1019,6 +1244,12 @@ class ConfigGroup(app_commands.Group):
             return
 
         await self.bot.db.remove_allowed_voice_channel(guild.id, channel.id)
+        self.bot.log_interaction(
+            "config_voz_remover",
+            "success",
+            interaction=interaction,
+            channel_id=channel.id,
+        )
         await interaction.response.send_message(f"{channel.mention} removido.", ephemeral=True)
 
     @app_commands.command(name="tolerancia", description="Define a tolerância de ausência.")
@@ -1033,6 +1264,12 @@ class ConfigGroup(app_commands.Group):
             return
 
         await self.bot.db.set_tolerance(guild.id, minutos * 60)
+        self.bot.log_interaction(
+            "config_tolerancia",
+            "success",
+            interaction=interaction,
+            minutes=minutos,
+        )
         await interaction.response.send_message(
             f"Tolerância configurada para {minutos} minuto(s).", ephemeral=True
         )
@@ -1052,6 +1289,12 @@ class ConfigGroup(app_commands.Group):
             return
 
         await self.bot.db.set_control_message_ttl(guild.id, segundos)
+        self.bot.log_interaction(
+            "config_limpeza",
+            "success",
+            interaction=interaction,
+            seconds=segundos,
+        )
         if segundos == 0:
             await interaction.response.send_message(
                 "Limpeza automática do canal do painel desativada.",
@@ -1072,6 +1315,12 @@ class ConfigGroup(app_commands.Group):
 
         settings = await self.bot.db.get_settings(guild.id)
         allowed = await self.bot.db.list_allowed_voice_channels(guild.id)
+        self.bot.log_interaction(
+            "config_mostrar",
+            "success",
+            interaction=interaction,
+            allowed_voice_channels=len(allowed),
+        )
         allowed_mentions = [
             channel.mention
             for channel_id in allowed
@@ -1194,11 +1443,12 @@ def format_duration_words(total_seconds: int) -> str:
 
 
 def main() -> None:
+    settings = Settings()
+    log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    settings = Settings()
     bot = TimeClockBot(Database(str(settings.database_url)), dev_guild_id=settings.dev_guild_id)
     bot.run(settings.discord_token)
 

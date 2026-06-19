@@ -15,3 +15,4 @@ class Settings(BaseSettings):
     discord_token: str = Field(min_length=1)
     database_url: PostgresDsn
     dev_guild_id: int | None = Field(default=None, gt=0)
+    log_level: str = "INFO"
