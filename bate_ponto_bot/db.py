@@ -32,6 +32,7 @@ class TimeEntry:
     absence_started_at: datetime | None
     absence_deadline_at: datetime | None
     close_reason: str | None
+    status_message_id: int | None
 
 
 class Database:
@@ -240,6 +241,28 @@ class Database:
             user_id,
         )
         return _entry_from_row(row) if row else None
+
+    async def get_entry(self, entry_id: int) -> TimeEntry | None:
+        row = await self.fetchrow(
+            """
+            SELECT *
+            FROM time_entries
+            WHERE id = $1
+            """,
+            entry_id,
+        )
+        return _entry_from_row(row) if row else None
+
+    async def set_status_message(self, entry_id: int, message_id: int | None) -> None:
+        await self.execute(
+            """
+            UPDATE time_entries
+            SET status_message_id = $2
+            WHERE id = $1
+            """,
+            entry_id,
+            message_id,
+        )
 
     async def finish_entry(
         self,
@@ -509,6 +532,7 @@ def _entry_from_row(row: asyncpg.Record) -> TimeEntry:
         absence_started_at=row["absence_started_at"],
         absence_deadline_at=row["absence_deadline_at"],
         close_reason=row["close_reason"],
+        status_message_id=_optional_int(row["status_message_id"]),
     )
 
 

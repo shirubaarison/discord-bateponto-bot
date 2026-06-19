@@ -10,7 +10,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bate_ponto_bot.config import Settings
-from bate_ponto_bot.db import Database, utcnow, worked_seconds
+from bate_ponto_bot.db import Database, TimeEntry, utcnow, worked_seconds
 
 LOGGER = logging.getLogger(__name__)
 LOCAL_TIMEZONE = ZoneInfo("America/Fortaleza")
@@ -96,6 +96,30 @@ class TimeClockBot(commands.Bot):
                 message.channel.id,
             )
 
+    async def _delete_point_status_message_after(
+        self,
+        message: discord.Message,
+        entry_id: int,
+        delay: int,
+    ) -> None:
+        await asyncio.sleep(delay)
+        try:
+            await message.delete()
+        except discord.NotFound:
+            pass
+        except discord.Forbidden:
+            LOGGER.warning("Sem permissão para apagar status no canal %s.", message.channel.id)
+            return
+        except discord.HTTPException:
+            LOGGER.exception(
+                "Falha ao apagar status %s no canal %s.",
+                message.id,
+                message.channel.id,
+            )
+            return
+
+        await self.db.set_status_message(entry_id, None)
+
     async def on_voice_state_update(
         self,
         member: discord.Member,
@@ -121,13 +145,22 @@ class TimeClockBot(commands.Bot):
             deadline_at = started_at + timedelta(seconds=settings.absence_tolerance_seconds)
             updated = await self.db.set_absence_deadline(entry, started_at, deadline_at)
             self._schedule_absence_check(member.guild.id, member.id, updated.id, deadline_at)
-            await self.notify_control_channel(
-                member.guild,
+            await self.delete_point_status_message(member.guild, updated.id)
+            await self.notify_member(
+                member,
                 "Você saiu da chamada permitida",
-                f"{member.mention}, seu ponto continua ativo durante a tolerância. "
+                "Seu ponto continua ativo durante a tolerância. "
                 f"Volte em até {format_duration_words(settings.absence_tolerance_seconds)} "
                 f"para evitar encerramento automático.\n\nLimite: {format_dt(deadline_at)}",
                 color=discord.Color.orange(),
+                fields=[
+                    ("Status", "Em tolerância", True),
+                    (
+                        "Canal anterior",
+                        before.channel.mention if before.channel else "desconhecido",
+                        True,
+                    ),
+                ],
             )
             await self.audit(
                 member.guild,
@@ -150,6 +183,21 @@ class TimeClockBot(commands.Bot):
             if entry.absence_deadline_at:
                 await self.db.clear_absence(entry)
                 self._cancel_absence_check(entry.id)
+                await self.delete_point_status_message(member.guild, entry.id)
+                await self.notify_member(
+                    member,
+                    "Ponto ativo",
+                    "Você voltou antes do fim da tolerância. Seu ponto continua ativo.",
+                    color=discord.Color.green(),
+                    fields=[
+                        ("Status", "Ativo", True),
+                        (
+                            "Canal atual",
+                            after.channel.mention if after.channel else "desconhecido",
+                            True,
+                        ),
+                    ],
+                )
                 await self.audit(
                     member.guild,
                     "Ausência encerrada",
@@ -168,11 +216,16 @@ class TimeClockBot(commands.Bot):
 
             if entry.status == "paused" and entry.pause_reason == "auto_absence":
                 finished = await self.db.finish_entry(entry, close_reason="auto_absence")
-                await self.notify_control_channel(
-                    member.guild,
+                await self.delete_point_status_message(member.guild, entry.id)
+                await self.notify_member(
+                    member,
                     "Ponto encerrado automaticamente",
-                    f"{member.mention}, seu ponto já havia sido encerrado por ausência.",
+                    "Seu ponto já havia sido encerrado por ausência.",
                     color=discord.Color.red(),
+                    fields=[
+                        ("Status", "Encerrado", True),
+                        ("Fim", format_dt(finished.ended_at), True),
+                    ],
                 )
                 await self.audit(
                     member.guild,
@@ -200,12 +253,18 @@ class TimeClockBot(commands.Bot):
         if entry is None:
             return
 
-        await self.notify_control_channel(
-            member.guild,
+        await self.delete_point_status_message(member.guild, entry.id)
+        await self.notify_member(
+            member,
             "Ponto já encerrado",
-            f"{member.mention}, seu ponto foi encerrado automaticamente por ausência. "
+            "Seu ponto foi encerrado automaticamente por ausência. "
             "Para continuar, inicie um novo ponto.",
             color=discord.Color.red(),
+            fields=[
+                ("Status", "Encerrado", True),
+                ("Fim", format_dt(entry.ended_at), True),
+                ("Tempo trabalhado", format_seconds(worked_seconds(entry)), True),
+            ],
         )
         await self.audit(
             member.guild,
@@ -255,6 +314,31 @@ class TimeClockBot(commands.Bot):
             except discord.HTTPException:
                 LOGGER.exception("Falha ao enviar log de auditoria no canal %s.", channel.id)
 
+    async def notify_member(
+        self,
+        member: discord.Member,
+        title: str,
+        description: str,
+        *,
+        color: discord.Color,
+        fields: list[tuple[str, str, bool]] | None = None,
+    ) -> None:
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=color,
+        )
+        for name, value, inline in fields or []:
+            embed.add_field(name=name, value=value, inline=inline)
+        embed.set_footer(text=f"Bate-ponto - {member.guild.name}")
+
+        try:
+            await member.send(embed=embed)
+        except discord.Forbidden:
+            LOGGER.warning("Não foi possível enviar DM para o usuário %s.", member.id)
+        except discord.HTTPException:
+            LOGGER.exception("Falha ao enviar aviso privado para o usuário %s.", member.id)
+
     async def notify_control_channel(
         self,
         guild: discord.Guild,
@@ -292,6 +376,118 @@ class TimeClockBot(commands.Bot):
                 settings.control_message_ttl_seconds,
             )
 
+    async def send_control_panel(self, channel: discord.TextChannel) -> discord.Message:
+        embed = await self.build_control_panel_embed(channel.guild)
+        return await channel.send(embed=embed, view=TimeClockView(self))
+
+    async def build_control_panel_embed(self, guild: discord.Guild) -> discord.Embed:
+        return discord.Embed(
+            title="Bate-ponto",
+            description="Use os botões abaixo para controlar seu ponto.",
+            color=discord.Color.blurple(),
+        )
+
+    async def upsert_point_status_message(
+        self,
+        guild: discord.Guild,
+        entry_id: int,
+        title: str,
+        description: str,
+        *,
+        color: discord.Color,
+        fields: list[tuple[str, str, bool]] | None = None,
+        delete_after: bool = False,
+    ) -> None:
+        settings = await self.db.get_settings(guild.id)
+        if not settings.control_channel_id:
+            return
+
+        channel = guild.get_channel(settings.control_channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            return
+
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=color,
+        )
+        for name, value, inline in fields or []:
+            embed.add_field(name=name, value=value, inline=inline)
+        embed.set_footer(text="Bate-ponto")
+
+        entry = await self.db.get_entry(entry_id)
+        message = await self._get_point_status_message(channel, entry)
+        try:
+            if message:
+                await message.edit(embed=embed)
+            else:
+                message = await channel.send(embed=embed)
+                await self.db.set_status_message(entry_id, message.id)
+        except discord.Forbidden:
+            LOGGER.warning("Sem permissão para atualizar status no canal do painel %s.", channel.id)
+            return
+        except discord.HTTPException:
+            LOGGER.exception("Falha ao atualizar status no canal do painel %s.", channel.id)
+            return
+
+        if delete_after and settings.control_message_ttl_seconds > 0:
+            task = asyncio.create_task(
+                self._delete_point_status_message_after(
+                    message,
+                    entry_id,
+                    settings.control_message_ttl_seconds,
+                )
+            )
+            self.cleanup_tasks.add(task)
+            task.add_done_callback(self.cleanup_tasks.discard)
+
+    async def delete_point_status_message(self, guild: discord.Guild, entry_id: int) -> None:
+        settings = await self.db.get_settings(guild.id)
+        if not settings.control_channel_id:
+            return
+
+        channel = guild.get_channel(settings.control_channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            return
+
+        entry = await self.db.get_entry(entry_id)
+        message = await self._get_point_status_message(channel, entry)
+        if message is None:
+            await self.db.set_status_message(entry_id, None)
+            return
+
+        try:
+            await message.delete()
+        except discord.NotFound:
+            pass
+        except discord.Forbidden:
+            LOGGER.warning("Sem permissão para apagar status no canal do painel %s.", channel.id)
+            return
+        except discord.HTTPException:
+            LOGGER.exception("Falha ao apagar status no canal do painel %s.", channel.id)
+            return
+
+        await self.db.set_status_message(entry_id, None)
+
+    async def _get_point_status_message(
+        self,
+        channel: discord.TextChannel,
+        entry: TimeEntry | None,
+    ) -> discord.Message | None:
+        message_id = entry.status_message_id if entry else None
+        if not message_id:
+            return None
+        try:
+            return await channel.fetch_message(message_id)
+        except discord.NotFound:
+            return None
+        except discord.Forbidden:
+            LOGGER.warning("Sem permissão para buscar status no canal do painel %s.", channel.id)
+            return None
+        except discord.HTTPException:
+            LOGGER.exception("Falha ao buscar status no canal do painel %s.", channel.id)
+            return None
+
     async def respond_control_interaction(
         self,
         interaction: discord.Interaction,
@@ -305,6 +501,36 @@ class TimeClockBot(commands.Bot):
 
         await interaction.response.send_message(
             content,
+            ephemeral=True,
+            delete_after=delete_after,
+        )
+
+    async def respond_control_embed(
+        self,
+        interaction: discord.Interaction,
+        title: str,
+        description: str,
+        *,
+        color: discord.Color,
+        fields: list[tuple[str, str, bool]] | None = None,
+    ) -> None:
+        delete_after: int | None = None
+        if interaction.guild:
+            settings = await self.db.get_settings(interaction.guild.id)
+            if settings.control_message_ttl_seconds > 0:
+                delete_after = settings.control_message_ttl_seconds
+
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=color,
+        )
+        for name, value, inline in fields or []:
+            embed.add_field(name=name, value=value, inline=inline)
+        embed.set_footer(text="Bate-ponto")
+
+        await interaction.response.send_message(
+            embed=embed,
             ephemeral=True,
             delete_after=delete_after,
         )
@@ -348,12 +574,17 @@ class TimeClockBot(commands.Bot):
                 ended_at=deadline_at,
                 close_reason="auto_absence",
             )
-            await self.notify_control_channel(
-                guild,
+            await self.delete_point_status_message(guild, entry.id)
+            await self.notify_member(
+                member,
                 "Ponto encerrado automaticamente",
-                f"{member.mention}, seu ponto foi encerrado porque você excedeu "
-                "a tolerância de ausência.",
+                "Seu ponto foi encerrado porque você excedeu a tolerância de ausência.",
                 color=discord.Color.red(),
+                fields=[
+                    ("Status", "Encerrado", True),
+                    ("Fim", format_dt(finished.ended_at), True),
+                    ("Tempo trabalhado", format_seconds(worked_seconds(finished)), True),
+                ],
             )
             await self.audit(
                 guild,
@@ -419,9 +650,20 @@ class TimeClockView(discord.ui.View):
             return
 
         entry = await self.bot.db.start_entry(member.guild.id, member.id)
-        await self.bot.respond_control_interaction(
+        await self.bot.respond_control_embed(
             interaction,
-            f"Ponto iniciado às {format_dt(entry.started_at)}.",
+            "Ponto ativo",
+            f"{member.mention}, seu ponto foi iniciado.",
+            color=discord.Color.green(),
+            fields=[
+                ("Status", "Ativo", True),
+                ("Início", format_dt(entry.started_at), True),
+                (
+                    "Canal de voz",
+                    member.voice.channel.mention if member.voice else "desconhecido",
+                    True,
+                ),
+            ],
         )
         await self.bot.audit(
             member.guild,
@@ -458,9 +700,19 @@ class TimeClockView(discord.ui.View):
             return
 
         finished = await self.bot.db.finish_entry(entry)
-        await self.bot.respond_control_interaction(
+        self.bot._cancel_absence_check(entry.id)
+        await self.bot.delete_point_status_message(member.guild, entry.id)
+        await self.bot.respond_control_embed(
             interaction,
-            f"Ponto finalizado. Tempo trabalhado: {format_seconds(worked_seconds(finished))}.",
+            "Ponto finalizado",
+            f"{member.mention}, seu ponto foi encerrado.",
+            color=discord.Color.red(),
+            fields=[
+                ("Início", format_dt(finished.started_at), True),
+                ("Fim", format_dt(finished.ended_at), True),
+                ("Tempo trabalhado", format_seconds(worked_seconds(finished)), True),
+                ("Tempo pausado", format_seconds(finished.pause_total_seconds), True),
+            ],
         )
         await self.bot.audit(
             member.guild,
@@ -498,9 +750,18 @@ class TimeClockView(discord.ui.View):
 
         if entry.status == "active":
             paused = await self.bot.db.pause_entry(entry, reason="manual")
-            await self.bot.respond_control_interaction(
+            self.bot._cancel_absence_check(entry.id)
+            await self.bot.delete_point_status_message(member.guild, entry.id)
+            await self.bot.respond_control_embed(
                 interaction,
-                "Ponto pausado.",
+                "Ponto pausado",
+                f"{member.mention}, seu ponto foi pausado.",
+                color=discord.Color.orange(),
+                fields=[
+                    ("Status", "Pausado", True),
+                    ("Pausado em", format_dt(paused.pause_started_at), True),
+                    ("Tempo trabalhado", format_seconds(worked_seconds(paused)), True),
+                ],
             )
             await self.bot.audit(
                 member.guild,
@@ -521,9 +782,22 @@ class TimeClockView(discord.ui.View):
             return
 
         resumed = await self.bot.db.resume_entry(entry)
-        await self.bot.respond_control_interaction(
+        await self.bot.delete_point_status_message(member.guild, entry.id)
+        await self.bot.respond_control_embed(
             interaction,
-            "Ponto retomado.",
+            "Ponto ativo",
+            f"{member.mention}, seu ponto foi retomado.",
+            color=discord.Color.green(),
+            fields=[
+                ("Status", "Ativo", True),
+                ("Retomado em", format_dt(utcnow()), True),
+                ("Tempo trabalhado", format_seconds(worked_seconds(resumed)), True),
+                (
+                    "Canal de voz",
+                    member.voice.channel.mention if member.voice else "desconhecido",
+                    True,
+                ),
+            ],
         )
         await self.bot.audit(
             member.guild,
@@ -556,11 +830,23 @@ class TimeClockView(discord.ui.View):
             return
 
         status = "ativo" if entry.status == "active" else "pausado"
-        await self.bot.respond_control_interaction(
+        status_title = "Ponto ativo" if entry.status == "active" else "Ponto pausado"
+        status_color = discord.Color.green() if entry.status == "active" else discord.Color.orange()
+        await self.bot.delete_point_status_message(member.guild, entry.id)
+        fields = [
+            ("Status", status.title(), True),
+            ("Início", format_dt(entry.started_at), True),
+            ("Tempo trabalhado", format_seconds(worked_seconds(entry)), True),
+        ]
+        if entry.status == "paused":
+            fields.append(("Pausado em", format_dt(entry.pause_started_at), True))
+
+        await self.bot.respond_control_embed(
             interaction,
-            f"Status: {status}\n"
-            f"Início: {format_dt(entry.started_at)}\n"
-            f"Tempo trabalhado: {format_seconds(worked_seconds(entry))}",
+            status_title,
+            f"{member.mention}, este é o status atual do seu ponto.",
+            color=status_color,
+            fields=fields,
         )
 
     @discord.ui.button(
@@ -581,17 +867,22 @@ class TimeClockView(discord.ui.View):
             )
             return
 
-        lines = [
-            f"- {format_dt(entry.started_at)} até {format_dt(entry.ended_at)}: "
-            f"{format_seconds(worked_seconds(entry))}"
+        fields = [
+            (
+                format_dt(entry.started_at),
+                f"Fim: {format_dt(entry.ended_at)}\n"
+                f"Tempo trabalhado: {format_seconds(worked_seconds(entry))}",
+                False,
+            )
             for entry in history
         ]
         total_seconds = sum(worked_seconds(entry) for entry in history)
-        await self.bot.respond_control_interaction(
+        await self.bot.respond_control_embed(
             interaction,
-            "Histórico recente:\n"
-            + "\n".join(lines)
-            + f"\n\nTotal listado: {format_seconds(total_seconds)}",
+            "Histórico recente",
+            f"Total listado: {format_seconds(total_seconds)}",
+            color=discord.Color.blurple(),
+            fields=fields,
         )
 
 
@@ -632,10 +923,7 @@ class ConfigGroup(app_commands.Group):
             return
 
         await interaction.response.defer(ephemeral=True)
-        message = await channel.send(
-            "**Bate-ponto**\nUse os botões abaixo para controlar seu ponto.",
-            view=TimeClockView(self.bot),
-        )
+        message = await self.bot.send_control_panel(channel)
         await self.bot.db.set_control_channel(guild.id, channel.id, message.id)
         await interaction.followup.send(f"Painel publicado em {channel.mention}.", ephemeral=True)
 

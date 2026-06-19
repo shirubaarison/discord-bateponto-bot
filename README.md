@@ -5,6 +5,8 @@ Bot de bate-ponto para Discord com PostgreSQL.
 ## Recursos
 
 - Painel com botões para iniciar, finalizar, pausar/retomar, ver status e histórico.
+- Status individual pelo botão `Status`.
+- Aviso privado quando a pessoa sai e volta ao canal de voz permitido.
 - Configuração por servidor via comandos slash.
 - Canal de auditoria para logs.
 - Início e retomada permitidos apenas em canais de voz configurados.
@@ -17,9 +19,9 @@ Bot de bate-ponto para Discord com PostgreSQL.
 - PostgreSQL ou Docker
 - Um aplicativo/bot no Discord Developer Portal com token.
 
-O bot usa eventos de servidor e canais de voz. Nenhum privileged intent e necessario para o MVP.
+O bot usa eventos de servidor e canais de voz. Nenhum privileged intent é necessário para o MVP.
 
-Permissoes minimas do bot nos canais configurados:
+Permissões mínimas do bot nos canais configurados:
 
 - Canal do painel: `View Channel`, `Send Messages` e `Manage Messages`.
 - Canal de logs: `View Channel` e `Send Messages`.
@@ -77,6 +79,12 @@ uv run ruff check .
 uv run ruff format .
 ```
 
+Rode os testes com:
+
+```bash
+uv run pytest
+```
+
 Para apenas verificar formatação sem alterar arquivos:
 
 ```bash
@@ -98,12 +106,15 @@ Todos os comandos de configuração exigem permissão `Manage Server`.
 Use `/config limpeza segundos:0` para desativar a limpeza automática. A mensagem fixa do painel
 não é apagada.
 
-O botão `Histórico` mostra os últimos pontos finalizados com início, fim, total de cada registro
-e o total somado da lista exibida.
+Os botões respondem de forma privada para quem clicou. O botão `Histórico` mostra os últimos pontos
+finalizados com início, fim, total de cada registro e o total somado da lista exibida.
+
+As mensagens automáticas de ausência são enviadas por DM para a pessoa afetada. O Discord só permite
+mensagens privadas dentro do canal quando elas são respostas efêmeras a comandos ou botões.
 
 ## Regra de ausência
 
 Quando uma pessoa com ponto ativo sai de um canal de voz permitido, o bot inicia a tolerância
 configurada. Se ela voltar antes do prazo, o ponto continua ativo. Se exceder o prazo, o ponto é
 encerrado automaticamente no horário limite da tolerância. Se ela voltar depois do encerramento,
-o bot avisa no canal do painel que um novo ponto precisa ser iniciado.
+o bot avisa a pessoa por DM que um novo ponto precisa ser iniciado.
