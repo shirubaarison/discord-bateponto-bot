@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     postgres_port: int = Field(default=5432, gt=0, le=65535)
     dev_guild_id: int | None = Field(default=None, gt=0)
     log_level: str = "INFO"
+    dashboard_host: str = "0.0.0.0"
+    dashboard_port: int = Field(default=5000, gt=0, le=65535)
+    dashboard_debug: bool = False
+    dashboard_secret_key: str = "bate-ponto-secret-key-change-in-prod"
 
     @property
     def resolved_database_url(self) -> str:

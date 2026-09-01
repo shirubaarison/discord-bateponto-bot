@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Auditoria de Eventos | Bate-Ponto Discord{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-title">
+        <h1>📜 Registro de Eventos e Auditoria</h1>
+        <p>Acompanhe em tempo real o histórico de ações e transições de ponto no servidor.</p>
+    </div>
+    <div>
+        <a href="{{ url_for('export_entries', guild_id=selected_guild_id) }}" class="btn btn-secondary">
+            📥 Exportar Registros (CSV)
+        </a>
+    </div>
+</div>
+
+{% if guilds|length > 1 %}
+<div class="filter-bar">
+    <form method="GET" action="{{ url_for('events_page') }}" class="filter-form">
+        <div class="form-group">
+            <label for="guild_id">Servidor:</label>
+            <select name="guild_id" id="guild_id" class="input-control" onchange="this.form.submit()">
+                <option value="">Todos os Servidores</option>
+                {% for g in guilds %}
+                <option value="{{ g.guild_id }}" {% if selected_guild_id == g.guild_id %}selected{% endif %}>
+                    Servidor {{ g.guild_id }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+</div>
+{% endif %}
+
+<div class="section-card">
+    <div class="section-header">
+        <h2>Últimos Eventos do Sistema ({{ events|length }})</h2>
+        <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" placeholder="Filtrar eventos..." data-table-search="eventsTable">
+        </div>
+    </div>
+
+    {% if events %}
+    <div class="table-responsive">
+        <table class="data-table" id="eventsTable">
+            <thead>
+                <tr>
+                    <th>Data / Hora</th>
+                    <th>Tipo de Evento</th>
+                    <th>Colaborador</th>
+                    <th># Registro</th>
+                    <th>Detalhes / Metadados</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ev in events %}
+                {% set u_info = resolved_users.get(ev.user_id, {}) %}
+                <tr>
+                    <td style="white-space: nowrap;">{{ ev.occurred_at_formatted }}</td>
+                    <td>
+                        {% if ev.event_type == 'started' %}
+                        <span class="badge badge-success">🟢 Ponto Iniciado</span>
+                        {% elif ev.event_type == 'paused' %}
+                        <span class="badge badge-warning">⏸️ Ponto Pausado</span>
+                        {% elif ev.event_type == 'resumed' %}
+                        <span class="badge badge-info">▶️ Ponto Retomado</span>
+                        {% elif ev.event_type == 'finished' %}
+                        <span class="badge badge-muted">🛑 Ponto Finalizado</span>
+                        {% elif ev.event_type == 'auto_absence_closed' %}
+                        <span class="badge badge-danger">⚠️ Ausência Automática</span>
+                        {% else %}
+                        <span class="badge badge-muted">{{ ev.event_type }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="user-cell">
+                            <img src="{{ u_info.avatar_url or 'https://cdn.discordapp.com/embed/avatars/0.png' }}" alt="Avatar" class="user-avatar" style="width: 28px; height: 28px;">
+                            <a href="{{ url_for('user_detail', user_id=ev.user_id, guild_id=ev.guild_id) }}" style="text-decoration: none;" class="user-display-name">
+                                {{ u_info.display_name or u_info.username or ('User ' ~ ev.user_id) }}
+                            </a>
+                        </div>
+                    </td>
+                    <td><code>#{{ ev.entry_id }}</code></td>
+                    <td style="font-size: 0.8rem; color: var(--text-muted);">
+                        {% if ev.metadata and ev.metadata != '{}' %}
+                        <code>{{ ev.metadata }}</code>
+                        {% else %}
+                        <span class="text-dim">-</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">📜</div>
+        <h3>Nenhum evento registrado</h3>
+        <p>Ainda não há eventos gravados no sistema.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

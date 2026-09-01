@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}{{ user.display_name or ('User ' ~ user_id) }} | Bate-Ponto Discord{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 1rem;">
+    <a href="{{ url_for('index', guild_id=guild_id) }}" class="btn btn-secondary btn-sm">
+        &larr; Voltar ao Painel Geral
+    </a>
+</div>
+
+<!-- USER PROFILE HEADER -->
+<div class="section-card" style="padding: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1.5rem;">
+    <div style="display: flex; align-items: center; gap: 1.25rem;">
+        <img src="{{ user.avatar_url or 'https://cdn.discordapp.com/embed/avatars/0.png' }}" alt="Avatar" style="width: 72px; height: 72px; border-radius: 50%; border: 3px solid var(--border-color); background-color: var(--bg-input);">
+        <div>
+            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                <h1 style="font-size: 1.5rem; font-weight: 700;">{{ user.display_name or ('User ' ~ user_id) }}</h1>
+                {% if stats.current_status == 'active' %}
+                <span class="badge badge-success"><span class="pulse-dot"></span> Ponto Ativo</span>
+                {% elif stats.current_status == 'paused' %}
+                <span class="badge badge-warning">⏸️ Ponto Pausado</span>
+                {% else %}
+                <span class="badge badge-muted">⚪ Fora do Ponto</span>
+                {% endif %}
+            </div>
+            <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.25rem;">
+                {% if user.username != user.display_name %}<span>@{{ user.username }} &bull; </span>{% endif %}
+                <span>ID Discord: <code>{{ user_id }}</code></span>
+                {% if guild_id %}<span> &bull; Servidor: <code>{{ guild_id }}</code></span>{% endif %}
+            </div>
+        </div>
+    </div>
+    <div>
+        <a href="{{ url_for('export_single_user', user_id=user_id, guild_id=guild_id, preset=active_preset if active_preset != 'custom' else None, start_date=start_date, end_date=end_date) }}" class="btn btn-success">
+            📥 Exportar Histórico do Usuário (CSV)
+        </a>
+    </div>
+</div>
+
+<!-- FILTERS -->
+<div class="filter-bar">
+    <div class="filter-presets">
+        <span style="font-size: 0.85rem; color: var(--text-dim); margin-right: 0.35rem; font-weight: 600;">Período:</span>
+        <a href="{{ url_for('user_detail', user_id=user_id, guild_id=guild_id) }}" class="filter-btn {% if active_preset == 'all' %}active{% endif %}">Tudo</a>
+        <a href="{{ url_for('user_detail', user_id=user_id, guild_id=guild_id, preset='today') }}" class="filter-btn {% if active_preset == 'today' %}active{% endif %}">Hoje</a>
+        <a href="{{ url_for('user_detail', user_id=user_id, guild_id=guild_id, preset='last7') }}" class="filter-btn {% if active_preset == 'last7' %}active{% endif %}">Últimos 7 dias</a>
+        <a href="{{ url_for('user_detail', user_id=user_id, guild_id=guild_id, preset='month') }}" class="filter-btn {% if active_preset == 'month' %}active{% endif %}">Este Mês</a>
+    </div>
+
+    <form method="GET" action="{{ url_for('user_detail', user_id=user_id, guild_id=guild_id) }}" class="filter-form">
+        <div class="form-group">
+            <label for="start_date">De:</label>
+            <input type="date" id="start_date" name="start_date" class="input-control" value="{{ start_date }}">
+        </div>
+        <div class="form-group">
+            <label for="end_date">Até:</label>
+            <input type="date" id="end_date" name="end_date" class="input-control" value="{{ end_date }}">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
+        {% if active_preset != 'all' %}
+        <a href="{{ url_for('user_detail', user_id=user_id, guild_id=guild_id) }}" class="btn btn-secondary btn-sm" title="Limpar">✕</a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- USER STATS CARDS -->
+<div class="stats-grid">
+    <div class="stat-card accent-primary">
+        <div class="stat-icon">📋</div>
+        <div class="stat-info">
+            <div class="stat-title">Total de Turnos</div>
+            <div class="stat-value">{{ stats.shifts_count }}</div>
+            <div class="stat-sub">Pontos registrados</div>
+        </div>
+    </div>
+
+    <div class="stat-card accent-info">
+        <div class="stat-icon">⏱️</div>
+        <div class="stat-info">
+            <div class="stat-title">Horas Trabalhadas</div>
+            <div class="stat-value">{{ stats.total_worked_hours }}h</div>
+            <div class="stat-sub">{{ stats.total_worked_formatted }}</div>
+        </div>
+    </div>
+
+    <div class="stat-card accent-warning">
+        <div class="stat-icon">⏸️</div>
+        <div class="stat-info">
+            <div class="stat-title">Tempo em Pausa</div>
+            <div class="stat-value">{{ stats.total_pause_formatted }}</div>
+            <div class="stat-sub">Intervalos somados</div>
+        </div>
+    </div>
+
+    <div class="stat-card accent-primary">
+        <div class="stat-icon">📈</div>
+        <div class="stat-info">
+            <div class="stat-title">Média por Turno</div>
+            <div class="stat-value">{{ stats.avg_shift_formatted }}</div>
+            <div class="stat-sub">Tempo médio</div>
+        </div>
+    </div>
+
+    <div class="stat-card accent-danger">
+        <div class="stat-icon">⚠️</div>
+        <div class="stat-info">
+            <div class="stat-title">Fechamentos por Ausência</div>
+            <div class="stat-value">{{ stats.total_auto_absence }}</div>
+            <div class="stat-sub">Tolerância estourada</div>
+        </div>
+    </div>
+</div>
+
+<!-- SHIFT HISTORY TABLE -->
+<div class="section-card">
+    <div class="section-header">
+        <h2>📑 Histórico Detalhado de Registros ({{ entries|length }})</h2>
+        <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" placeholder="Buscar nas colunas..." data-table-search="entriesTable">
+        </div>
+    </div>
+
+    {% if entries %}
+    <div class="table-responsive">
+        <table class="data-table" id="entriesTable">
+            <thead>
+                <tr>
+                    <th># ID</th>
+                    <th>Status</th>
+                    <th>Início</th>
+                    <th>Fim</th>
+                    <th>Tempo Trabalhado</th>
+                    <th>Pausa</th>
+                    <th>Motivo de Encerramento</th>
+                    <th>Eventos</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in entries %}
+                <tr>
+                    <td><code>#{{ entry.id }}</code></td>
+                    <td>
+                        {% if entry.status == 'active' %}
+                        <span class="badge badge-success">🟢 Ativo</span>
+                        {% elif entry.status == 'paused' %}
+                        <span class="badge badge-warning">⏸️ Pausado</span>
+                        {% else %}
+                        <span class="badge badge-muted">Finalizado</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ entry.started_at_formatted }}</td>
+                    <td>
+                        {% if entry.ended_at %}
+                        {{ entry.ended_at_formatted }}
+                        {% else %}
+                        <span class="badge badge-info">Em andamento</span>
+                        {% endif %}
+                    </td>
+                    <td><strong style="color: var(--info);">{{ entry.worked_formatted }}</strong></td>
+                    <td>{{ entry.pause_formatted }}</td>
+                    <td>
+                        {% if entry.close_reason == 'auto_absence' %}
+                        <span class="badge badge-danger">Ausência automática</span>
+                        {% elif entry.close_reason == 'manual' %}
+                        <span class="badge badge-muted">Manual</span>
+                        {% elif entry.close_reason %}
+                        <span class="badge badge-muted">{{ entry.close_reason }}</span>
+                        {% elif not entry.ended_at %}
+                        <span class="text-dim">-</span>
+                        {% else %}
+                        <span class="text-dim">Normal</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <button type="button" class="btn btn-secondary btn-sm" data-view-events="{{ entry.id }}" title="Ver timeline de eventos">
+                            📜 Timeline
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">📋</div>
+        <h3>Nenhum registro de ponto</h3>
+        <p>Este colaborador ainda não possui registros no período selecionado.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -10,6 +10,22 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+  dashboard:
+    build: .
+    container_name: bate-ponto-dashboard
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      DASHBOARD_HOST: 0.0.0.0
+      DASHBOARD_PORT: 5000
+    ports:
+      - "127.0.0.1:5000:5000"
+    command: ["bate-ponto-dashboard"]
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   migrate:
     build: .

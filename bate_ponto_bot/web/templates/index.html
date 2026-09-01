@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block title %}Painel de Horas | Bate-Ponto Discord{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-title">
+        <h1>📊 Painel de Controle de Ponto</h1>
+        <p>Visão geral de colaboradores, horas trabalhadas e atividade em tempo real.</p>
+    </div>
+    <div class="btn-group">
+        <a href="{{ url_for('export_summary', guild_id=selected_guild_id, preset=active_preset if active_preset != 'custom' else None, start_date=start_date, end_date=end_date) }}" class="btn btn-success">
+            📥 Exportar Resumo (CSV)
+        </a>
+        <a href="{{ url_for('export_entries', guild_id=selected_guild_id, preset=active_preset if active_preset != 'custom' else None, start_date=start_date, end_date=end_date) }}" class="btn btn-secondary">
+            📑 Registros Detalhados (CSV)
+        </a>
+    </div>
+</div>
+
+<!-- FILTERS -->
+<div class="filter-bar">
+    <div class="filter-presets">
+        <span style="font-size: 0.85rem; color: var(--text-dim); margin-right: 0.35rem; font-weight: 600;">Período:</span>
+        <a href="{{ url_for('index', guild_id=selected_guild_id) }}" class="filter-btn {% if active_preset == 'all' %}active{% endif %}">Tudo</a>
+        <a href="{{ url_for('index', preset='today', guild_id=selected_guild_id) }}" class="filter-btn {% if active_preset == 'today' %}active{% endif %}">Hoje</a>
+        <a href="{{ url_for('index', preset='last7', guild_id=selected_guild_id) }}" class="filter-btn {% if active_preset == 'last7' %}active{% endif %}">Últimos 7 dias</a>
+        <a href="{{ url_for('index', preset='month', guild_id=selected_guild_id) }}" class="filter-btn {% if active_preset == 'month' %}active{% endif %}">Este Mês</a>
+    </div>
+
+    <form method="GET" action="{{ url_for('index') }}" class="filter-form">
+        {% if guilds|length > 1 %}
+        <div class="form-group">
+            <label for="guild_id">Servidor:</label>
+            <select name="guild_id" id="guild_id" class="input-control" onchange="this.form.submit()">
+                <option value="">Todos os Servidores</option>
+                {% for g in guilds %}
+                <option value="{{ g.guild_id }}" {% if selected_guild_id == g.guild_id %}selected{% endif %}>
+                    Servidor {{ g.guild_id }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        <div class="form-group">
+            <label for="start_date">De:</label>
+            <input type="date" id="start_date" name="start_date" class="input-control" value="{{ start_date }}">
+        </div>
+        <div class="form-group">
+            <label for="end_date">Até:</label>
+            <input type="date" id="end_date" name="end_date" class="input-control" value="{{ end_date }}">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
+        {% if active_preset != 'all' or selected_guild_id %}
+        <a href="{{ url_for('index') }}" class="btn btn-secondary btn-sm" title="Limpar Filtros">✕ Limpar</a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- STATS CARDS -->
+<div class="stats-grid">
+    <div class="stat-card accent-primary">
+        <div class="stat-icon">👥</div>
+        <div class="stat-info">
+            <div class="stat-title">Colaboradores</div>
+            <div class="stat-value">{{ stats.total_users }}</div>
+            <div class="stat-sub">{{ stats.total_entries }} registros no período</div>
+        </div>
+    </div>
+
+    <div class="stat-card accent-success">
+        <div class="stat-icon">🟢</div>
+        <div class="stat-info">
+            <div class="stat-title">Trabalhando Agora</div>
+            <div class="stat-value">
+                {{ stats.working_now }}
+                {% if stats.working_now > 0 %}<span class="pulse-dot" style="margin-left: 6px;"></span>{% endif %}
+            </div>
+            <div class="stat-sub">{{ stats.active_now }} ativos &bull; {{ stats.paused_now }} pausados</div>
+        </div>
+    </div>
+
+    <div class="stat-card accent-info">
+        <div class="stat-icon">⏱️</div>
+        <div class="stat-info">
+            <div class="stat-title">Horas Trabalhadas</div>
+            <div class="stat-value">{{ stats.total_worked_hours }}h</div>
+            <div class="stat-sub">{{ stats.total_worked_formatted }}</div>
+        </div>
+    </div>
+
+    <div class="stat-card accent-warning">
+        <div class="stat-icon">⏸️</div>
+        <div class="stat-info">
+            <div class="stat-title">Tempo em Pausa</div>
+            <div class="stat-value">{{ stats.total_pause_formatted }}</div>
+            <div class="stat-sub">Total de intervalos</div>
+        </div>
+    </div>
+
+    <div class="stat-card accent-primary">
+        <div class="stat-icon">📈</div>
+        <div class="stat-info">
+            <div class="stat-title">Média por Turno</div>
+            <div class="stat-value">{{ stats.avg_shift_formatted }}</div>
+            <div class="stat-sub">Duração média de trabalho</div>
+        </div>
+    </div>
+
+    <div class="stat-card accent-danger">
+        <div class="stat-icon">⚠️</div>
+        <div class="stat-info">
+            <div class="stat-title">Fechamentos por Ausência</div>
+            <div class="stat-value">{{ stats.total_auto_absence }}</div>
+            <div class="stat-sub">Tolerância excedida</div>
+        </div>
+    </div>
+</div>
+
+<!-- ACTIVE WORKERS (LIVE) -->
+{% if active_entries %}
+<div class="section-card" style="border-left: 4px solid var(--success);">
+    <div class="section-header">
+        <h2>
+            <span class="pulse-dot"></span>
+            Em Atividade no Momento ({{ active_entries|length }})
+        </h2>
+    </div>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Colaborador</th>
+                    <th>Status</th>
+                    <th>Início do Ponto</th>
+                    <th>Tempo Decorrido</th>
+                    <th>Servidor</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in active_entries %}
+                {% set u_info = resolved_users.get(entry.user_id, {}) %}
+                <tr>
+                    <td>
+                        <div class="user-cell">
+                            <img src="{{ u_info.avatar_url or 'https://cdn.discordapp.com/embed/avatars/0.png' }}" alt="Avatar" class="user-avatar">
+                            <div class="user-names">
+                                <span class="user-display-name">{{ u_info.display_name or u_info.username or ('User ' ~ entry.user_id) }}</span>
+                                <span class="user-tag">ID: {{ entry.user_id }}</span>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        {% if entry.status == 'active' %}
+                        <span class="badge badge-success">🟢 Ativo</span>
+                        {% else %}
+                        <span class="badge badge-warning">⏸️ Pausado</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ entry.started_at_formatted }}</td>
+                    <td><strong>{{ entry.worked_formatted }}</strong></td>
+                    <td><code>{{ entry.guild_id }}</code></td>
+                    <td>
+                        <a href="{{ url_for('user_detail', user_id=entry.user_id, guild_id=entry.guild_id) }}" class="btn btn-secondary btn-sm">
+                            Ver Perfil
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- COLLABORATOR SUMMARY TABLE -->
+<div class="section-card">
+    <div class="section-header">
+        <h2>👥 Desempenho dos Colaboradores ({{ users|length }})</h2>
+        <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" placeholder="Filtrar por nome ou ID..." data-table-search="usersTable">
+        </div>
+    </div>
+    
+    {% if users %}
+    <div class="table-responsive">
+        <table class="data-table" id="usersTable">
+            <thead>
+                <tr>
+                    <th>Colaborador</th>
+                    <th>Status Atual</th>
+                    <th>Total Turnos</th>
+                    <th>Tempo Trabalhado</th>
+                    <th>Horas</th>
+                    <th>Tempo em Pausa</th>
+                    <th>Média/Turno</th>
+                    <th>Ausências</th>
+                    <th>Última Atividade</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                {% set u_info = resolved_users.get(u.user_id, {}) %}
+                <tr>
+                    <td>
+                        <div class="user-cell">
+                            <img src="{{ u_info.avatar_url or 'https://cdn.discordapp.com/embed/avatars/0.png' }}" alt="Avatar" class="user-avatar">
+                            <div class="user-names">
+                                <a href="{{ url_for('user_detail', user_id=u.user_id, guild_id=u.guild_id) }}" style="text-decoration: none;" class="user-display-name">
+                                    {{ u_info.display_name or u_info.username or ('User ' ~ u.user_id) }}
+                                </a>
+                                <span class="user-tag">ID: {{ u.user_id }}</span>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        {% if u.current_status == 'active' %}
+                        <span class="badge badge-success"><span class="pulse-dot"></span> Ativo</span>
+                        {% elif u.current_status == 'paused' %}
+                        <span class="badge badge-warning">⏸️ Pausado</span>
+                        {% else %}
+                        <span class="badge badge-muted">⚪ Inativo</span>
+                        {% endif %}
+                    </td>
+                    <td><strong>{{ u.shifts_count }}</strong></td>
+                    <td><strong style="color: var(--info);">{{ u.worked_formatted }}</strong></td>
+                    <td><span class="badge badge-info">{{ u.worked_hours }}h</span></td>
+                    <td>{{ u.pause_formatted }}</td>
+                    <td>{{ u.avg_shift_formatted }}</td>
+                    <td>
+                        {% if u.auto_absence_count > 0 %}
+                        <span class="badge badge-danger">{{ u.auto_absence_count }}</span>
+                        {% else %}
+                        <span class="text-dim">0</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size: 0.8rem; color: var(--text-muted);">{{ u.last_activity_at_formatted }}</td>
+                    <td>
+                        <div class="btn-group">
+                            <a href="{{ url_for('user_detail', user_id=u.user_id, guild_id=u.guild_id) }}" class="btn btn-secondary btn-sm" title="Ver detalhes e histórico">
+                                Detalhes
+                            </a>
+                            <a href="{{ url_for('export_single_user', user_id=u.user_id, guild_id=u.guild_id) }}" class="btn btn-secondary btn-sm" title="Exportar CSV individual">
+                                📥
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">📋</div>
+        <h3>Nenhum registro encontrado</h3>
+        <p>Não há pontos registrados com os filtros selecionados.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

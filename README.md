@@ -12,6 +12,12 @@ Bot de bate-ponto para Discord com PostgreSQL.
 - Início e retomada permitidos apenas em canais de voz configurados.
 - Tolerância de ausência ajustável. Ao exceder a tolerância, o ponto é encerrado automaticamente.
 - Histórico persistido em PostgreSQL.
+- **Dashboard Web em Flask**:
+  - Métricas gerais (total de horas trabalhadas, tempo em pausa, média por turno, ausências automáticas).
+  - Visualização ao vivo de colaboradores trabalhando no momento.
+  - Tabela completa de desempenho por colaborador com filtros de data (Hoje, 7 dias, Este Mês, Customizado).
+  - Página individual de histórico e timeline de eventos por ponto.
+  - Exportação de dados para CSV com compatibilidade para Excel (UTF-8 BOM).
 
 ## Requisitos
 
@@ -62,9 +68,23 @@ Depois rode o bot:
 uv run bate-ponto-bot
 ```
 
+Para rodar o Dashboard Web em Flask:
+
+```bash
+uv run bate-ponto-dashboard
+```
+
+O dashboard estará disponível em `http://localhost:5000`.
+
+Para rodar tudo junto via Docker Compose:
+
+```bash
+docker compose up -d
+```
+
 As variáveis de ambiente são validadas com Pydantic na inicialização.
 
-Para parar o banco:
+Para parar o banco e containers:
 
 ```bash
 docker compose down

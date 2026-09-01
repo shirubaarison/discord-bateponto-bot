@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dashboard | Bate-Ponto Discord{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%20%220%22%20100%20100%22><text y=%22.9em%22 font-size=%2290%22>⏱️</text></svg>">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="{{ url_for('index') }}" class="nav-brand">
+            <div class="brand-logo">⏱️</div>
+            <span>Bate-Ponto Dashboard</span>
+        </a>
+        <ul class="nav-links">
+            <li><a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">Painel Geral</a></li>
+            <li><a href="{{ url_for('events_page') }}" class="nav-link {% if request.endpoint == 'events_page' %}active{% endif %}">Auditoria / Eventos</a></li>
+            <li><a href="{{ url_for('export_entries') }}" class="btn btn-secondary btn-sm" title="Exportar todos os registros">📥 CSV Geral</a></li>
+        </ul>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Modal for Timeline Events -->
+    <div class="modal-backdrop" id="eventsModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 id="modalEntryTitle" style="font-size: 1.1rem; font-weight: 600;">Eventos do Registro</h3>
+                <button type="button" class="btn btn-secondary btn-sm" data-close-modal>&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="timeline" id="modalTimeline"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-close-modal>Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>Bate-Ponto Discord &copy; {{ now().year if now is defined else '2026' }} &bull; PostgreSQL + Flask</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
