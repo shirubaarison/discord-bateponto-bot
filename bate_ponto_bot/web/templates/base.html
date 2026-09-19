@@ -13,8 +13,7 @@
 <body>
     <nav class="navbar">
         <a href="{{ url_for('index') }}" class="nav-brand">
-            <div class="brand-logo" aria-hidden="true">LL</div>
-            <span class="brand-copy"><strong>Bate-Ponto</strong><small>Gestão de jornada</small></span>
+            <span class="brand-copy"><strong>Bate Ponto LL</strong></span>
         </a>
         <ul class="nav-links">
             <li><a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">Visão geral</a></li>
@@ -44,7 +43,7 @@
     </div>
 
     <footer class="footer">
-        <p><strong>Bate-Ponto</strong> &copy; {{ now().year if now is defined else '2026' }} &bull; Horários em Fortaleza (UTC−3)</p>
+        <p><strong>Bate Ponto LL</strong> &copy; {{ now().year if now is defined else '2026' }}</p>
     </footer>
 
     <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>

@@ -27,8 +27,7 @@
             <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.25rem;">
                 {% if user.username != user.display_name %}<span>@{{ user.username }} &bull; </span>{% endif %}
                 <span>ID Discord: <code>{{ user_id }}</code></span>
-                {% if guild_id %}<span> &bull; Servidor: <code>{{ guild_id }}</code></span>{% endif %}
-                <span> &bull; Horários em Fortaleza (UTC−3)</span>
+                {% if guild %}<span> &bull; Servidor: {{ guild.name }}</span>{% endif %}
             </div>
         </div>
     </div>
@@ -68,7 +67,6 @@
 <!-- USER STATS CARDS -->
 <div class="stats-grid">
     <div class="stat-card accent-primary">
-        <div class="stat-icon"><i data-lucide="clipboard-list"></i></div>
         <div class="stat-info">
             <div class="stat-title">Total de Turnos</div>
             <div class="stat-value">{{ stats.shifts_count }}</div>
@@ -77,7 +75,6 @@
     </div>
 
     <div class="stat-card accent-info">
-        <div class="stat-icon"><i data-lucide="clock-3"></i></div>
         <div class="stat-info">
             <div class="stat-title">Horas Trabalhadas</div>
             <div class="stat-value">{{ stats.total_worked_hours }}h</div>
@@ -86,7 +83,6 @@
     </div>
 
     <div class="stat-card accent-warning">
-        <div class="stat-icon"><i data-lucide="pause"></i></div>
         <div class="stat-info">
             <div class="stat-title">Tempo em Pausa</div>
             <div class="stat-value">{{ stats.total_pause_formatted }}</div>
@@ -95,7 +91,6 @@
     </div>
 
     <div class="stat-card accent-primary">
-        <div class="stat-icon"><i data-lucide="chart-no-axes-column-increasing"></i></div>
         <div class="stat-info">
             <div class="stat-title">Média por Turno</div>
             <div class="stat-value">{{ stats.avg_shift_formatted }}</div>
@@ -104,7 +99,6 @@
     </div>
 
     <div class="stat-card accent-danger">
-        <div class="stat-icon"><i data-lucide="triangle-alert"></i></div>
         <div class="stat-info">
             <div class="stat-title">Fechamentos por Ausência</div>
             <div class="stat-value">{{ stats.total_auto_absence }}</div>
@@ -128,7 +122,6 @@
         <table class="data-table" id="entriesTable">
             <thead>
                 <tr>
-                    <th># ID</th>
                     <th>Status</th>
                     <th>Início</th>
                     <th>Fim</th>
@@ -141,7 +134,6 @@
             <tbody>
                 {% for entry in entries %}
                 <tr>
-                    <td><code>#{{ entry.id }}</code></td>
                     <td>
                         {% if entry.status == 'active' %}
                         <span class="status-label status-active"><span class="status-dot"></span>Ativo</span>

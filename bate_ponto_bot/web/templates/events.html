@@ -8,7 +8,6 @@
         <span class="page-eyebrow">Rastreabilidade</span>
         <h1>Registro de eventos e auditoria</h1>
         <p>Acompanhe em tempo real o histórico de ações e transições de ponto no servidor.</p>
-        <span class="timezone-note">Horário de Fortaleza • UTC−3</span>
     </div>
     <div>
         <a href="{{ url_for('export_entries', guild_id=selected_guild_id) }}" class="btn btn-secondary">
@@ -23,10 +22,10 @@
         <div class="form-group">
             <label for="guild_id">Servidor:</label>
             <select name="guild_id" id="guild_id" class="input-control" onchange="this.form.submit()">
-                <option value="">Todos os Servidores</option>
                 {% for g in guilds %}
+                {% set guild_info = resolved_guilds.get(g.guild_id, {}) %}
                 <option value="{{ g.guild_id }}" {% if selected_guild_id == g.guild_id %}selected{% endif %}>
-                    Servidor {{ g.guild_id }}
+                    {{ guild_info.name or ('Servidor ' ~ g.guild_id) }}
                 </option>
                 {% endfor %}
             </select>
@@ -52,7 +51,6 @@
                     <th>Data / Hora</th>
                     <th>Tipo de Evento</th>
                     <th>Colaborador</th>
-                    <th># Registro</th>
                     <th>Detalhes / Metadados</th>
                 </tr>
             </thead>
@@ -84,7 +82,6 @@
                             </a>
                         </div>
                     </td>
-                    <td><code>#{{ ev.entry_id }}</code></td>
                     <td style="font-size: 0.8rem; color: var(--text-muted);">
                         {% if ev.metadata and ev.metadata != '{}' %}
                         <code>{{ ev.metadata }}</code>

@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from bate_ponto_bot.web.discord_api import resolve_discord_user, resolve_discord_users
+from bate_ponto_bot.web.discord_api import (
+    resolve_discord_guild,
+    resolve_discord_guilds,
+    resolve_discord_user,
+    resolve_discord_users,
+)
 
 
 def test_resolve_discord_user_fallback_without_token() -> None:
@@ -20,3 +25,18 @@ def test_resolve_discord_users_batch() -> None:
     assert 222 in results
     assert results[111]["user_id"] == 111
     assert results[222]["user_id"] == 222
+
+
+def test_resolve_discord_guild_fallback_without_token() -> None:
+    guild = resolve_discord_guild(None, 333)
+
+    assert guild["guild_id"] == 333
+    assert guild["name"] == "Servidor 333"
+    assert guild["is_resolved"] is False
+
+
+def test_resolve_discord_guilds_batch() -> None:
+    results = resolve_discord_guilds(None, [333, 444])
+
+    assert results[333]["name"] == "Servidor 333"
+    assert results[444]["name"] == "Servidor 444"

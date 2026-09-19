@@ -11,6 +11,7 @@ LOGGER = logging.getLogger(__name__)
 
 # Cache structure: user_id -> (timestamp, data_dict)
 _USER_CACHE: dict[int, tuple[float, dict[str, Any]]] = {}
+_GUILD_CACHE: dict[int, tuple[float, dict[str, Any]]] = {}
 CACHE_TTL_SECONDS = 3600  # 1 hour
 
 
@@ -93,3 +94,63 @@ def resolve_discord_users(token: str | None, user_ids: list[int]) -> dict[int, d
     for uid in user_ids:
         result[uid] = resolve_discord_user(token, uid)
     return result
+
+
+def _default_guild_info(guild_id: int) -> dict[str, Any]:
+    return {
+        "guild_id": guild_id,
+        "name": f"Servidor {guild_id}",
+        "icon_url": None,
+        "is_resolved": False,
+    }
+
+
+def resolve_discord_guild(token: str | None, guild_id: int) -> dict[str, Any]:
+    """Resolve a Discord guild ID to its name and icon."""
+    now = time.time()
+    if guild_id in _GUILD_CACHE:
+        cached_time, cached_data = _GUILD_CACHE[guild_id]
+        if now - cached_time < CACHE_TTL_SECONDS:
+            return cached_data
+
+    if not token or token.strip() == "" or token == "coloque_o_token_do_bot_aqui":
+        fallback = _default_guild_info(guild_id)
+        _GUILD_CACHE[guild_id] = (now, fallback)
+        return fallback
+
+    req = urllib.request.Request(
+        f"https://discord.com/api/v10/guilds/{guild_id}",
+        headers={
+            "Authorization": f"Bot {token}",
+            "User-Agent": "BatePontoDashboard/1.0",
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=3.0) as response:
+            if response.status == 200:
+                data = json.loads(response.read().decode("utf-8"))
+                icon = data.get("icon")
+                guild_info = {
+                    "guild_id": guild_id,
+                    "name": data.get("name") or f"Servidor {guild_id}",
+                    "icon_url": (
+                        f"https://cdn.discordapp.com/icons/{guild_id}/{icon}.png" if icon else None
+                    ),
+                    "is_resolved": True,
+                }
+                _GUILD_CACHE[guild_id] = (now, guild_info)
+                return guild_info
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, Exception) as err:
+        LOGGER.debug("Could not resolve Discord guild %s: %s", guild_id, err)
+
+    fallback = _default_guild_info(guild_id)
+    _GUILD_CACHE[guild_id] = (now - CACHE_TTL_SECONDS + 300, fallback)
+    return fallback
+
+
+def resolve_discord_guilds(
+    token: str | None, guild_ids: list[int]
+) -> dict[int, dict[str, Any]]:
+    """Resolve a list of Discord guild IDs."""
+    return {guild_id: resolve_discord_guild(token, guild_id) for guild_id in guild_ids}

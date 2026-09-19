@@ -8,7 +8,6 @@
         <span class="page-eyebrow">Gestão de pessoas</span>
         <h1>Painel de controle de ponto</h1>
         <p>Uma visão clara da jornada, das pausas e da atividade da equipe.</p>
-        <span class="timezone-note">Horário de Fortaleza • UTC−3</span>
     </div>
     <div class="btn-group">
         <a href="{{ url_for('export_summary', guild_id=selected_guild_id, preset=active_preset if active_preset != 'custom' else None, start_date=start_date, end_date=end_date) }}" class="btn btn-success">
@@ -35,10 +34,10 @@
         <div class="form-group">
             <label for="guild_id">Servidor:</label>
             <select name="guild_id" id="guild_id" class="input-control" onchange="this.form.submit()">
-                <option value="">Todos os Servidores</option>
                 {% for g in guilds %}
+                {% set guild_info = resolved_guilds.get(g.guild_id, {}) %}
                 <option value="{{ g.guild_id }}" {% if selected_guild_id == g.guild_id %}selected{% endif %}>
-                    Servidor {{ g.guild_id }}
+                    {{ guild_info.name or ('Servidor ' ~ g.guild_id) }}
                 </option>
                 {% endfor %}
             </select>
@@ -63,7 +62,6 @@
 <!-- STATS CARDS -->
 <div class="stats-grid">
     <div class="stat-card accent-primary">
-        <div class="stat-icon"><i data-lucide="users"></i></div>
         <div class="stat-info">
             <div class="stat-title">Colaboradores</div>
             <div class="stat-value">{{ stats.total_users }}</div>
@@ -72,19 +70,14 @@
     </div>
 
     <div class="stat-card accent-success">
-        <div class="stat-icon"><i data-lucide="activity"></i></div>
         <div class="stat-info">
             <div class="stat-title">Trabalhando Agora</div>
-            <div class="stat-value">
-                {{ stats.working_now }}
-                {% if stats.working_now > 0 %}<span class="pulse-dot" style="margin-left: 6px;"></span>{% endif %}
-            </div>
+            <div class="stat-value">{{ stats.working_now }}</div>
             <div class="stat-sub">{{ stats.active_now }} ativos &bull; {{ stats.paused_now }} pausados</div>
         </div>
     </div>
 
     <div class="stat-card accent-info">
-        <div class="stat-icon"><i data-lucide="clock-3"></i></div>
         <div class="stat-info">
             <div class="stat-title">Horas Trabalhadas</div>
             <div class="stat-value">{{ stats.total_worked_hours }}h</div>
@@ -93,7 +86,6 @@
     </div>
 
     <div class="stat-card accent-warning">
-        <div class="stat-icon"><i data-lucide="pause"></i></div>
         <div class="stat-info">
             <div class="stat-title">Tempo em Pausa</div>
             <div class="stat-value">{{ stats.total_pause_formatted }}</div>
@@ -102,7 +94,6 @@
     </div>
 
     <div class="stat-card accent-primary">
-        <div class="stat-icon"><i data-lucide="chart-no-axes-column-increasing"></i></div>
         <div class="stat-info">
             <div class="stat-title">Média por Turno</div>
             <div class="stat-value">{{ stats.avg_shift_formatted }}</div>
@@ -111,7 +102,6 @@
     </div>
 
     <div class="stat-card accent-danger">
-        <div class="stat-icon"><i data-lucide="triangle-alert"></i></div>
         <div class="stat-info">
             <div class="stat-title">Fechamentos por Ausência</div>
             <div class="stat-value">{{ stats.total_auto_absence }}</div>
@@ -125,7 +115,6 @@
 <div class="section-card" style="border-left: 4px solid var(--success);">
     <div class="section-header">
         <h2>
-            <span class="pulse-dot"></span>
             Em Atividade no Momento ({{ active_entries|length }})
         </h2>
     </div>
@@ -137,7 +126,6 @@
                     <th>Status</th>
                     <th>Início do Ponto</th>
                     <th>Tempo Decorrido</th>
-                    <th>Servidor</th>
                     <th>Ações</th>
                 </tr>
             </thead>
@@ -150,7 +138,6 @@
                             <img src="{{ u_info.avatar_url or 'https://cdn.discordapp.com/embed/avatars/0.png' }}" alt="Avatar" class="user-avatar">
                             <div class="user-names">
                                 <span class="user-display-name">{{ u_info.display_name or u_info.username or ('User ' ~ entry.user_id) }}</span>
-                                <span class="user-tag">ID: {{ entry.user_id }}</span>
                             </div>
                         </div>
                     </td>
@@ -163,7 +150,6 @@
                     </td>
                     <td>{{ entry.started_at_formatted }}</td>
                     <td><strong>{{ entry.worked_formatted }}</strong></td>
-                    <td><code>{{ entry.guild_id }}</code></td>
                     <td>
                         <a href="{{ url_for('user_detail', user_id=entry.user_id, guild_id=entry.guild_id) }}" class="btn btn-secondary btn-sm">
                             Ver Perfil
@@ -183,7 +169,7 @@
         <h2>Desempenho dos colaboradores <span class="section-count">{{ users|length }}</span></h2>
         <div class="search-box">
             <i data-lucide="search" class="search-icon"></i>
-            <input type="text" placeholder="Filtrar por nome ou ID..." data-table-search="usersTable">
+            <input type="text" placeholder="Filtrar por nome..." data-table-search="usersTable">
         </div>
     </div>
     
@@ -215,7 +201,6 @@
                                 <a href="{{ url_for('user_detail', user_id=u.user_id, guild_id=u.guild_id) }}" style="text-decoration: none;" class="user-display-name">
                                     {{ u_info.display_name or u_info.username or ('User ' ~ u.user_id) }}
                                 </a>
-                                <span class="user-tag">ID: {{ u.user_id }}</span>
                             </div>
                         </div>
                     </td>

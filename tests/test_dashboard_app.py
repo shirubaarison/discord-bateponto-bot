@@ -124,7 +124,10 @@ def test_flask_app_routes() -> None:
 
     with (
         patch("bate_ponto_bot.web.app.get_db") as mock_get_db,
-        patch("bate_ponto_bot.web.app.get_guilds", return_value=[{"guild_id": 111}]),
+        patch(
+            "bate_ponto_bot.web.app.get_guilds",
+            return_value=[{"guild_id": 111}, {"guild_id": 333}],
+        ),
         patch("bate_ponto_bot.web.app.get_dashboard_stats", return_value=mock_stats),
         patch("bate_ponto_bot.web.app.get_active_entries", return_value=[]),
         patch("bate_ponto_bot.web.app.get_users_summary", return_value=mock_users),
@@ -133,6 +136,17 @@ def test_flask_app_routes() -> None:
         patch("bate_ponto_bot.web.app.get_all_entries", return_value=mock_entries),
         patch("bate_ponto_bot.web.app.get_recent_events", return_value=mock_events),
         patch("bate_ponto_bot.web.app.get_entry_events", return_value=mock_events),
+        patch(
+            "bate_ponto_bot.web.app.resolve_discord_guilds",
+            return_value={
+                111: {"guild_id": 111, "name": "Bate-Ponto"},
+                333: {"guild_id": 333, "name": "Outro servidor"},
+            },
+        ),
+        patch(
+            "bate_ponto_bot.web.app.resolve_discord_guild",
+            return_value={"guild_id": 111, "name": "Bate-Ponto"},
+        ),
     ):
         mock_conn = MagicMock()
         mock_get_db.return_value = mock_conn
@@ -143,7 +157,10 @@ def test_flask_app_routes() -> None:
         res = client.get("/")
         assert res.status_code == 200
         assert b"Painel de controle de ponto" in res.data
-        assert "Horário de Fortaleza" in res.text
+        assert "Horário de Fortaleza" not in res.text
+        assert "Todos os Servidores" not in res.text
+        assert '<option value="111" selected>' in res.text
+        assert "Bate-Ponto" in res.text
         assert b"Colaboradores" in res.data
 
         # 2. Test Export Summary CSV

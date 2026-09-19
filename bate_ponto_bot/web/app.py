@@ -11,7 +11,12 @@ from psycopg.rows import dict_row
 from bate_ponto_bot.config import Settings
 from bate_ponto_bot.utils import LOCAL_TIMEZONE
 from bate_ponto_bot.web.csv_export import generate_entries_csv, generate_users_summary_csv
-from bate_ponto_bot.web.discord_api import resolve_discord_user, resolve_discord_users
+from bate_ponto_bot.web.discord_api import (
+    resolve_discord_guild,
+    resolve_discord_guilds,
+    resolve_discord_user,
+    resolve_discord_users,
+)
 from bate_ponto_bot.web.queries import (
     get_active_entries,
     get_all_entries,
@@ -124,6 +129,9 @@ def create_app(settings: Settings | None = None) -> Flask:
 
         conn = get_db()
         guilds = get_guilds(conn)
+        if guild_id_param is None and guilds:
+            guild_id_param = int(guilds[0]["guild_id"])
+
         stats = get_dashboard_stats(
             conn, guild_id=guild_id_param, start_date=start_dt, end_date=end_dt
         )
@@ -137,6 +145,8 @@ def create_app(settings: Settings | None = None) -> Flask:
             {int(u["user_id"]) for u in users_summary} | {int(e["user_id"]) for e in active_entries}
         )
         resolved_users = resolve_discord_users(app.config.get("DISCORD_TOKEN"), user_ids)
+        guild_ids = [int(guild["guild_id"]) for guild in guilds]
+        resolved_guilds = resolve_discord_guilds(app.config.get("DISCORD_TOKEN"), guild_ids)
 
         return render_template(
             "index.html",
@@ -146,6 +156,7 @@ def create_app(settings: Settings | None = None) -> Flask:
             active_entries=active_entries,
             users=users_summary,
             resolved_users=resolved_users,
+            resolved_guilds=resolved_guilds,
             active_preset=active_preset,
             start_date=start_date_str or "",
             end_date=end_date_str or "",
@@ -170,12 +181,18 @@ def create_app(settings: Settings | None = None) -> Flask:
         )
 
         resolved_user = resolve_discord_user(app.config.get("DISCORD_TOKEN"), user_id)
+        resolved_guild = (
+            resolve_discord_guild(app.config.get("DISCORD_TOKEN"), guild_id_param)
+            if guild_id_param is not None
+            else None
+        )
 
         return render_template(
             "user_detail.html",
             user_id=user_id,
             guild_id=guild_id_param,
             user=resolved_user,
+            guild=resolved_guild,
             stats=user_stats,
             entries=entries,
             active_preset=active_preset,
@@ -187,11 +204,16 @@ def create_app(settings: Settings | None = None) -> Flask:
     def events_page() -> str:
         guild_id_param = request.args.get("guild_id", type=int)
         conn = get_db()
-        events = get_recent_events(conn, guild_id=guild_id_param, limit=100)
         guilds = get_guilds(conn)
+        if guild_id_param is None and guilds:
+            guild_id_param = int(guilds[0]["guild_id"])
+
+        events = get_recent_events(conn, guild_id=guild_id_param, limit=100)
 
         user_ids = list({int(ev["user_id"]) for ev in events})
         resolved_users = resolve_discord_users(app.config.get("DISCORD_TOKEN"), user_ids)
+        guild_ids = [int(guild["guild_id"]) for guild in guilds]
+        resolved_guilds = resolve_discord_guilds(app.config.get("DISCORD_TOKEN"), guild_ids)
 
         return render_template(
             "events.html",
@@ -199,6 +221,7 @@ def create_app(settings: Settings | None = None) -> Flask:
             guilds=guilds,
             selected_guild_id=guild_id_param,
             resolved_users=resolved_users,
+            resolved_guilds=resolved_guilds,
         )
 
     @app.route("/api/entries/<int:entry_id>/events")
