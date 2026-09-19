@@ -1,5 +1,13 @@
 document.addEventListener("DOMContentLoaded", () => {
     if (window.lucide) window.lucide.createIcons();
+
+    const escapeHtml = (value) => String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+
     // Search Filter for Data Tables
     const searchInputs = document.querySelectorAll("[data-table-search]");
     searchInputs.forEach(input => {
@@ -75,22 +83,22 @@ document.addEventListener("DOMContentLoaded", () => {
                     const title = eventTypeNames[ev.event_type] || `Evento: ${ev.event_type}`;
                     let metaInfo = "";
                     if (ev.metadata && Object.keys(ev.metadata).length > 0) {
-                        metaInfo = `<div style="color: var(--text-dim); font-size: 0.75rem; margin-top: 0.25rem;">${JSON.stringify(ev.metadata)}</div>`;
+                        metaInfo = `<div style="color: var(--text-dim); font-size: 0.75rem; margin-top: 0.25rem;">${escapeHtml(JSON.stringify(ev.metadata))}</div>`;
                     }
                     html += `
                         <div class="timeline-item">
                             <div class="timeline-dot"></div>
                             <div class="timeline-content">
-                                <strong>${title}</strong>
+                                <strong>${escapeHtml(title)}</strong>
                                 ${metaInfo}
-                                <div class="timeline-time">${ev.occurred_at_formatted}</div>
+                                <div class="timeline-time">${escapeHtml(ev.occurred_at_formatted)}</div>
                             </div>
                         </div>
                     `;
                 });
                 modalTimeline.innerHTML = html;
             } catch (err) {
-                modalTimeline.innerHTML = `<div class="timeline-item"><div class="timeline-content" style="color: var(--danger)">Erro ao carregar eventos: ${err.message}</div></div>`;
+                modalTimeline.innerHTML = `<div class="timeline-item"><div class="timeline-content" style="color: var(--danger)">Erro ao carregar eventos: ${escapeHtml(err.message)}</div></div>`;
             }
         });
     });

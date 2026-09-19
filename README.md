@@ -76,6 +76,33 @@ uv run bate-ponto-dashboard
 
 O dashboard estará disponível em `http://localhost:5000`.
 
+### Login do dashboard
+
+O dashboard não inicia sem usuário, hash de senha e uma chave de sessão segura. Gere a chave:
+
+```bash
+openssl rand -hex 32
+```
+
+Gere o hash da senha sem deixá-la no histórico do terminal:
+
+```bash
+docker compose run --rm dashboard python -c 'from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass("Senha: ")))'
+```
+
+Adicione os valores ao `.env`. Mantenha aspas simples ao redor do hash para preservar os caracteres
+`$`:
+
+```env
+DASHBOARD_SECRET_KEY=resultado_do_openssl
+DASHBOARD_USERNAME=Admin
+DASHBOARD_PASSWORD_HASH='resultado_do_comando_de_hash'
+DASHBOARD_SECURE_COOKIES=true
+```
+
+`DASHBOARD_SECURE_COOKIES=true` exige acesso por HTTPS. Use `false` somente no desenvolvimento
+local por HTTP. O `.env` não deve ser commitado.
+
 Para rodar tudo junto via Docker Compose:
 
 ```bash

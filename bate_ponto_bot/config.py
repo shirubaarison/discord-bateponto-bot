@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     dashboard_port: int = Field(default=5000, gt=0, le=65535)
     dashboard_debug: bool = False
     dashboard_secret_key: str = "bate-ponto-secret-key-change-in-prod"
+    dashboard_username: str | None = None
+    dashboard_password_hash: str | None = None
+    dashboard_secure_cookies: bool = True
+    dashboard_session_hours: int = Field(default=8, gt=0, le=24)
+    dashboard_login_max_attempts: int = Field(default=5, gt=0, le=20)
+    dashboard_login_window_seconds: int = Field(default=900, ge=60, le=3600)
+    dashboard_proxy_fix: bool = True
 
     @property
     def resolved_database_url(self) -> str:

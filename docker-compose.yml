@@ -24,7 +24,19 @@ services:
       TZ: America/Fortaleza
     ports:
       - "127.0.0.1:5000:5000"
-    command: ["bate-ponto-dashboard"]
+    command:
+      - gunicorn
+      - --bind
+      - 0.0.0.0:5000
+      - --workers
+      - "1"
+      - --threads
+      - "4"
+      - --access-logfile
+      - "-"
+      - --error-logfile
+      - "-"
+      - bate_ponto_bot.web.app:create_app()
     depends_on:
       postgres:
         condition: service_healthy

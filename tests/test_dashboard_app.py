@@ -1,11 +1,49 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
+from flask.testing import FlaskClient
+from werkzeug.security import generate_password_hash
+from werkzeug.test import TestResponse
+
 from bate_ponto_bot.config import Settings
 from bate_ponto_bot.web.app import create_app, parse_date_filters
+
+TEST_PASSWORD = "test-password"
+
+
+def dashboard_settings(**overrides: object) -> Settings:
+    values: dict[str, object] = {
+        "discord_token": "fake_token",
+        "database_url": "postgresql://user:pass@localhost:5432/db",
+        "postgres_host": None,
+        "dashboard_secret_key": "test-secret-key-that-is-longer-than-32-characters",
+        "dashboard_username": "Admin",
+        "dashboard_password_hash": generate_password_hash(TEST_PASSWORD),
+        "dashboard_secure_cookies": False,
+        "dashboard_proxy_fix": False,
+    }
+    values.update(overrides)
+    return Settings(**values)
+
+
+def login(
+    client: FlaskClient, *, password: str = TEST_PASSWORD, next_target: str | None = None
+) -> TestResponse:
+    login_page = client.get("/login")
+    csrf_match = re.search(r'name="csrf_token" value="([^"]+)"', login_page.text)
+    assert csrf_match is not None
+    data = {
+        "csrf_token": csrf_match.group(1),
+        "username": "Admin",
+        "password": password,
+    }
+    if next_target is not None:
+        data["next"] = next_target
+    return client.post("/login", data=data)
 
 
 def test_parse_date_filters_presets() -> None:
@@ -52,11 +90,7 @@ def test_parse_date_filters_empty() -> None:
 
 
 def test_flask_app_routes() -> None:
-    settings = Settings(
-        discord_token="fake_token",
-        database_url="postgresql://user:pass@localhost:5432/db",
-        postgres_host=None,
-    )
+    settings = dashboard_settings()
     app = create_app(settings)
     app.config["TESTING"] = True
 
@@ -153,7 +187,18 @@ def test_flask_app_routes() -> None:
 
         client = app.test_client()
 
-        # 1. Test Index route
+        # 1. Authentication is required
+        res_unauthenticated = client.get("/")
+        assert res_unauthenticated.status_code == 302
+        assert "/login?next=/" in res_unauthenticated.headers["Location"]
+        assert client.get("/export/entries").status_code == 302
+        assert client.get("/api/entries/10/events").status_code == 302
+
+        res_login = login(client)
+        assert res_login.status_code == 302
+        assert res_login.headers["Location"] == "/"
+
+        # 2. Test Index route
         res = client.get("/")
         assert res.status_code == 200
         assert b"Painel de controle de ponto" in res.data
@@ -162,40 +207,115 @@ def test_flask_app_routes() -> None:
         assert '<option value="111" selected>' in res.text
         assert "Bate-Ponto" in res.text
         assert b"Colaboradores" in res.data
+        assert '<div class="stat-title">Tempo em Pausa</div>' not in res.text
+        assert '<div class="stat-title">Média por Turno</div>' not in res.text
+        assert '<div class="stat-title">Fechamentos por Ausência</div>' not in res.text
+        assert "default-src 'self'" in res.headers["Content-Security-Policy"]
+        assert res.headers["X-Frame-Options"] == "DENY"
 
-        # 2. Test Export Summary CSV
+        # 3. Test Export Summary CSV
         res_csv = client.get("/export/summary")
         assert res_csv.status_code == 200
         assert res_csv.headers["Content-Type"].startswith("text/csv")
 
-        # 3. Test Export Entries CSV
+        # 4. Test Export Entries CSV
         res_entries_csv = client.get("/export/entries")
         assert res_entries_csv.status_code == 200
         assert res_entries_csv.headers["Content-Type"].startswith("text/csv")
         assert "ID do Registro" in res_entries_csv.text
 
-        # 4. Test User Detail Page
+        # 5. Test User Detail Page
         res_user = client.get("/users/222")
         assert res_user.status_code == 200
         assert b"Total de Turnos" in res_user.data
 
-        # 5. Test Export Single User CSV
+        # 6. Test Export Single User CSV
         res_user_csv = client.get("/export/user/222")
         assert res_user_csv.status_code == 200
         assert res_user_csv.headers["Content-Type"].startswith("text/csv")
 
-        # 6. Test Events / Audit Page
+        # 7. Test Events / Audit Page
         res_events = client.get("/events")
         assert res_events.status_code == 200
         assert b"Registro de eventos" in res_events.data
 
-        # 7. Test API Entry Events endpoint
+        # 8. Test API Entry Events endpoint
         res_api = client.get("/api/entries/10/events")
         assert res_api.status_code == 200
         assert res_api.json["entry_id"] == 10
         assert len(res_api.json["events"]) == 1
 
-        # 8. Test Health Check endpoint
+        # 9. Test Health Check endpoint
         res_health = client.get("/healthz")
         assert res_health.status_code == 200
         assert res_health.json["status"] == "ok"
+
+        csrf_match = re.search(r'name="csrf_token" value="([^"]+)"', res.text)
+        assert csrf_match is not None
+        logout_response = client.post("/logout", data={"csrf_token": csrf_match.group(1)})
+        assert logout_response.status_code == 302
+        assert client.get("/").status_code == 302
+
+
+def test_dashboard_login_rejects_invalid_credentials_and_csrf() -> None:
+    app = create_app(dashboard_settings())
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    invalid_credentials = login(client, password="wrong-password")
+    assert invalid_credentials.status_code == 401
+    assert "Usuário ou senha inválidos." in invalid_credentials.text
+
+    invalid_csrf = client.post(
+        "/login",
+        data={
+            "csrf_token": "invalid",
+            "username": "Admin",
+            "password": TEST_PASSWORD,
+        },
+    )
+    assert invalid_csrf.status_code == 400
+
+
+def test_dashboard_login_rate_limit_and_safe_redirect() -> None:
+    app = create_app(dashboard_settings(dashboard_login_max_attempts=2))
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    assert login(client, password="wrong-password").status_code == 401
+    assert login(client, password="wrong-password").status_code == 401
+    assert login(client, password="wrong-password").status_code == 429
+
+    redirect_app = create_app(dashboard_settings())
+    redirect_app.config["TESTING"] = True
+    fresh_client = redirect_app.test_client()
+    authenticated = login(fresh_client, next_target="https://example.com/phishing")
+    assert authenticated.status_code == 302
+    assert authenticated.headers["Location"] == "/"
+
+
+def test_dashboard_rejects_insecure_auth_configuration() -> None:
+    settings = Settings(
+        discord_token="fake_token",
+        database_url="postgresql://user:pass@localhost:5432/db",
+        postgres_host=None,
+    )
+
+    try:
+        create_app(settings)
+    except ValueError as error:
+        assert "DASHBOARD_USERNAME" in str(error)
+    else:
+        raise AssertionError("Dashboard accepted missing authentication settings")
+
+
+def test_dashboard_sets_secure_session_cookie() -> None:
+    app = create_app(dashboard_settings(dashboard_secure_cookies=True))
+    app.config["TESTING"] = True
+
+    response = app.test_client().get("/login")
+    cookie = response.headers["Set-Cookie"]
+
+    assert "Secure" in cookie
+    assert "HttpOnly" in cookie
+    assert "SameSite=Strict" in cookie

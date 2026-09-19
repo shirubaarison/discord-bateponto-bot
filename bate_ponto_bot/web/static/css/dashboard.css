@@ -103,6 +103,8 @@ code {
     transition: 160ms ease;
 }
 .nav-link:hover, .nav-link.active { color: var(--indigo); background: transparent; }
+.logout-form { display: flex; }
+.logout-button { border: 0; font-family: inherit; cursor: pointer; }
 
 .container { width: min(100%, 1400px); margin: 0 auto; padding: 2.5rem 1.25rem 4rem; flex: 1; }
 .page-header {
@@ -226,6 +228,18 @@ a.user-display-name:hover { color: var(--blue); text-decoration: underline !impo
 .empty-state h3 { color: var(--navy); font-family: var(--font-display); }
 .footer { margin-top: auto; padding: 1.25rem; color: var(--muted); background: #fff; border-top: 1px solid var(--line); text-align: center; font-size: .78rem; }
 .footer strong { color: var(--indigo); }
+
+.login-page { background: var(--canvas); }
+.login-shell { width: 100%; min-height: 100vh; display: grid; place-items: center; padding: 1.25rem; }
+.login-card { width: min(420px, 100%); padding: 2rem; background: var(--paper); border: 1px solid var(--line); border-top: 4px solid var(--indigo); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); }
+.login-brand { display: block; margin-bottom: 2rem; color: var(--indigo); font-family: var(--font-display); font-size: .9rem; font-weight: 800; }
+.login-card h1 { color: var(--navy); font-family: var(--font-display); font-size: 1.65rem; letter-spacing: -.035em; }
+.login-card > p { margin-top: .4rem; color: var(--muted); font-size: .9rem; }
+.login-error { margin-top: 1.25rem; padding: .7rem .8rem; color: var(--danger); background: var(--danger-light); border: 1px solid rgba(194,24,114,.18); border-radius: var(--radius-sm); font-size: .82rem; }
+.login-form { display: grid; gap: .65rem; margin-top: 1.5rem; }
+.login-form label { margin-top: .25rem; color: var(--muted); font-size: .78rem; font-weight: 700; }
+.login-form .input-control { width: 100%; min-height: 44px; }
+.login-form .btn { min-height: 44px; margin-top: .75rem; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: none; align-items: center; justify-content: center; padding: 1rem; background: rgba(6,37,56,.72); backdrop-filter: blur(5px); }
 .modal-backdrop.show { display: flex; }

@@ -19,6 +19,12 @@
             <li><a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">Visão geral</a></li>
             <li><a href="{{ url_for('events_page') }}" class="nav-link {% if request.endpoint == 'events_page' %}active{% endif %}">Auditoria</a></li>
             <li><a href="{{ url_for('export_entries') }}" class="btn btn-secondary btn-sm" title="Exportar todos os registros"><i data-lucide="download"></i> Exportar CSV</a></li>
+            <li>
+                <form action="{{ url_for('logout') }}" method="POST" class="logout-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="nav-link logout-button">Sair</button>
+                </form>
+            </li>
         </ul>
     </nav>
 
