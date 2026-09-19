@@ -12,7 +12,7 @@
     </div>
     <div>
         <a href="{{ url_for('export_entries', guild_id=selected_guild_id) }}" class="btn btn-secondary">
-            📥 Exportar Registros (CSV)
+            <i data-lucide="download"></i> Exportar registros
         </a>
     </div>
 </div>
@@ -39,7 +39,7 @@
     <div class="section-header">
         <h2>Últimos Eventos do Sistema ({{ events|length }})</h2>
         <div class="search-box">
-            <span class="search-icon">🔍</span>
+            <i data-lucide="search" class="search-icon"></i>
             <input type="text" placeholder="Filtrar eventos..." data-table-search="eventsTable">
         </div>
     </div>
@@ -63,17 +63,17 @@
                     <td style="white-space: nowrap;">{{ ev.occurred_at_formatted }}</td>
                     <td>
                         {% if ev.event_type == 'started' %}
-                        <span class="badge badge-success">🟢 Ponto Iniciado</span>
+                        <span class="status-label status-active"><span class="status-dot"></span>Ponto iniciado</span>
                         {% elif ev.event_type == 'paused' %}
-                        <span class="badge badge-warning">⏸️ Ponto Pausado</span>
+                        <span class="status-label status-paused"><span class="status-dot"></span>Ponto pausado</span>
                         {% elif ev.event_type == 'resumed' %}
-                        <span class="badge badge-info">▶️ Ponto Retomado</span>
+                        <span class="status-label status-info"><span class="status-dot"></span>Ponto retomado</span>
                         {% elif ev.event_type == 'finished' %}
-                        <span class="badge badge-muted">🛑 Ponto Finalizado</span>
+                        <span class="status-label status-inactive"><span class="status-dot"></span>Ponto finalizado</span>
                         {% elif ev.event_type == 'auto_absence_closed' %}
-                        <span class="badge badge-danger">⚠️ Ausência Automática</span>
+                        <span class="status-label status-danger"><span class="status-dot"></span>Ausência automática</span>
                         {% else %}
-                        <span class="badge badge-muted">{{ ev.event_type }}</span>
+                        <span class="status-label">{{ ev.event_type }}</span>
                         {% endif %}
                     </td>
                     <td>
@@ -99,7 +99,7 @@
     </div>
     {% else %}
     <div class="empty-state">
-        <div class="empty-state-icon">📜</div>
+        <i data-lucide="scroll-text" class="empty-state-icon"></i>
         <h3>Nenhum evento registrado</h3>
         <p>Ainda não há eventos gravados no sistema.</p>
     </div>

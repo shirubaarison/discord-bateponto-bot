@@ -17,11 +17,11 @@
             <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
                 <h1 style="font-size: 1.5rem; font-weight: 700;">{{ user.display_name or ('User ' ~ user_id) }}</h1>
                 {% if stats.current_status == 'active' %}
-                <span class="badge badge-success"><span class="pulse-dot"></span> Ponto Ativo</span>
+                <span class="status-label status-active"><span class="status-dot"></span>Ponto ativo</span>
                 {% elif stats.current_status == 'paused' %}
-                <span class="badge badge-warning">⏸️ Ponto Pausado</span>
+                <span class="status-label status-paused"><span class="status-dot"></span>Ponto pausado</span>
                 {% else %}
-                <span class="badge badge-muted">⚪ Fora do Ponto</span>
+                <span class="status-label status-inactive"><span class="status-dot"></span>Fora do ponto</span>
                 {% endif %}
             </div>
             <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.25rem;">
@@ -34,7 +34,7 @@
     </div>
     <div>
         <a href="{{ url_for('export_single_user', user_id=user_id, guild_id=guild_id, preset=active_preset if active_preset != 'custom' else None, start_date=start_date, end_date=end_date) }}" class="btn btn-success">
-            📥 Exportar Histórico do Usuário (CSV)
+            <i data-lucide="download"></i> Exportar histórico
         </a>
     </div>
 </div>
@@ -60,7 +60,7 @@
         </div>
         <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
         {% if active_preset != 'all' %}
-        <a href="{{ url_for('user_detail', user_id=user_id, guild_id=guild_id) }}" class="btn btn-secondary btn-sm" title="Limpar">✕</a>
+        <a href="{{ url_for('user_detail', user_id=user_id, guild_id=guild_id) }}" class="btn btn-secondary btn-sm" title="Limpar">Limpar</a>
         {% endif %}
     </form>
 </div>
@@ -68,7 +68,7 @@
 <!-- USER STATS CARDS -->
 <div class="stats-grid">
     <div class="stat-card accent-primary">
-        <div class="stat-icon">📋</div>
+        <div class="stat-icon"><i data-lucide="clipboard-list"></i></div>
         <div class="stat-info">
             <div class="stat-title">Total de Turnos</div>
             <div class="stat-value">{{ stats.shifts_count }}</div>
@@ -77,7 +77,7 @@
     </div>
 
     <div class="stat-card accent-info">
-        <div class="stat-icon">⏱️</div>
+        <div class="stat-icon"><i data-lucide="clock-3"></i></div>
         <div class="stat-info">
             <div class="stat-title">Horas Trabalhadas</div>
             <div class="stat-value">{{ stats.total_worked_hours }}h</div>
@@ -86,7 +86,7 @@
     </div>
 
     <div class="stat-card accent-warning">
-        <div class="stat-icon">⏸️</div>
+        <div class="stat-icon"><i data-lucide="pause"></i></div>
         <div class="stat-info">
             <div class="stat-title">Tempo em Pausa</div>
             <div class="stat-value">{{ stats.total_pause_formatted }}</div>
@@ -95,7 +95,7 @@
     </div>
 
     <div class="stat-card accent-primary">
-        <div class="stat-icon">📈</div>
+        <div class="stat-icon"><i data-lucide="chart-no-axes-column-increasing"></i></div>
         <div class="stat-info">
             <div class="stat-title">Média por Turno</div>
             <div class="stat-value">{{ stats.avg_shift_formatted }}</div>
@@ -104,7 +104,7 @@
     </div>
 
     <div class="stat-card accent-danger">
-        <div class="stat-icon">⚠️</div>
+        <div class="stat-icon"><i data-lucide="triangle-alert"></i></div>
         <div class="stat-info">
             <div class="stat-title">Fechamentos por Ausência</div>
             <div class="stat-value">{{ stats.total_auto_absence }}</div>
@@ -116,9 +116,9 @@
 <!-- SHIFT HISTORY TABLE -->
 <div class="section-card">
     <div class="section-header">
-        <h2>📑 Histórico Detalhado de Registros ({{ entries|length }})</h2>
+        <h2>Histórico detalhado <span class="section-count">{{ entries|length }}</span></h2>
         <div class="search-box">
-            <span class="search-icon">🔍</span>
+            <i data-lucide="search" class="search-icon"></i>
             <input type="text" placeholder="Buscar nas colunas..." data-table-search="entriesTable">
         </div>
     </div>
@@ -144,11 +144,11 @@
                     <td><code>#{{ entry.id }}</code></td>
                     <td>
                         {% if entry.status == 'active' %}
-                        <span class="badge badge-success">🟢 Ativo</span>
+                        <span class="status-label status-active"><span class="status-dot"></span>Ativo</span>
                         {% elif entry.status == 'paused' %}
-                        <span class="badge badge-warning">⏸️ Pausado</span>
+                        <span class="status-label status-paused"><span class="status-dot"></span>Pausado</span>
                         {% else %}
-                        <span class="badge badge-muted">Finalizado</span>
+                        <span class="status-label status-inactive"><span class="status-dot"></span>Finalizado</span>
                         {% endif %}
                     </td>
                     <td>{{ entry.started_at_formatted }}</td>
@@ -156,18 +156,18 @@
                         {% if entry.ended_at %}
                         {{ entry.ended_at_formatted }}
                         {% else %}
-                        <span class="badge badge-info">Em andamento</span>
+                        <span class="status-label status-info">Em andamento</span>
                         {% endif %}
                     </td>
                     <td><strong style="color: var(--info);">{{ entry.worked_formatted }}</strong></td>
                     <td>{{ entry.pause_formatted }}</td>
                     <td>
                         {% if entry.close_reason == 'auto_absence' %}
-                        <span class="badge badge-danger">Ausência automática</span>
+                        <span class="text-danger">Ausência automática</span>
                         {% elif entry.close_reason == 'manual' %}
-                        <span class="badge badge-muted">Manual</span>
+                        <span class="text-muted">Manual</span>
                         {% elif entry.close_reason %}
-                        <span class="badge badge-muted">{{ entry.close_reason }}</span>
+                        <span class="text-muted">{{ entry.close_reason }}</span>
                         {% elif not entry.ended_at %}
                         <span class="text-dim">-</span>
                         {% else %}
@@ -176,7 +176,7 @@
                     </td>
                     <td>
                         <button type="button" class="btn btn-secondary btn-sm" data-view-events="{{ entry.id }}" title="Ver timeline de eventos">
-                            📜 Timeline
+                            <i data-lucide="history"></i> Timeline
                         </button>
                     </td>
                 </tr>
@@ -186,7 +186,7 @@
     </div>
     {% else %}
     <div class="empty-state">
-        <div class="empty-state-icon">📋</div>
+        <i data-lucide="clipboard-list" class="empty-state-icon"></i>
         <h3>Nenhum registro de ponto</h3>
         <p>Este colaborador ainda não possui registros no período selecionado.</p>
     </div>

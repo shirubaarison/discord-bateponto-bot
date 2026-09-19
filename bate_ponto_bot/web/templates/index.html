@@ -12,10 +12,10 @@
     </div>
     <div class="btn-group">
         <a href="{{ url_for('export_summary', guild_id=selected_guild_id, preset=active_preset if active_preset != 'custom' else None, start_date=start_date, end_date=end_date) }}" class="btn btn-success">
-            📥 Exportar Resumo (CSV)
+            <i data-lucide="download"></i> Exportar resumo
         </a>
         <a href="{{ url_for('export_entries', guild_id=selected_guild_id, preset=active_preset if active_preset != 'custom' else None, start_date=start_date, end_date=end_date) }}" class="btn btn-secondary">
-            📑 Registros Detalhados (CSV)
+            Registros detalhados
         </a>
     </div>
 </div>
@@ -55,7 +55,7 @@
         </div>
         <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
         {% if active_preset != 'all' or selected_guild_id %}
-        <a href="{{ url_for('index') }}" class="btn btn-secondary btn-sm" title="Limpar Filtros">✕ Limpar</a>
+        <a href="{{ url_for('index') }}" class="btn btn-secondary btn-sm" title="Limpar Filtros">Limpar</a>
         {% endif %}
     </form>
 </div>
@@ -63,7 +63,7 @@
 <!-- STATS CARDS -->
 <div class="stats-grid">
     <div class="stat-card accent-primary">
-        <div class="stat-icon">👥</div>
+        <div class="stat-icon"><i data-lucide="users"></i></div>
         <div class="stat-info">
             <div class="stat-title">Colaboradores</div>
             <div class="stat-value">{{ stats.total_users }}</div>
@@ -72,7 +72,7 @@
     </div>
 
     <div class="stat-card accent-success">
-        <div class="stat-icon">🟢</div>
+        <div class="stat-icon"><i data-lucide="activity"></i></div>
         <div class="stat-info">
             <div class="stat-title">Trabalhando Agora</div>
             <div class="stat-value">
@@ -84,7 +84,7 @@
     </div>
 
     <div class="stat-card accent-info">
-        <div class="stat-icon">⏱️</div>
+        <div class="stat-icon"><i data-lucide="clock-3"></i></div>
         <div class="stat-info">
             <div class="stat-title">Horas Trabalhadas</div>
             <div class="stat-value">{{ stats.total_worked_hours }}h</div>
@@ -93,7 +93,7 @@
     </div>
 
     <div class="stat-card accent-warning">
-        <div class="stat-icon">⏸️</div>
+        <div class="stat-icon"><i data-lucide="pause"></i></div>
         <div class="stat-info">
             <div class="stat-title">Tempo em Pausa</div>
             <div class="stat-value">{{ stats.total_pause_formatted }}</div>
@@ -102,7 +102,7 @@
     </div>
 
     <div class="stat-card accent-primary">
-        <div class="stat-icon">📈</div>
+        <div class="stat-icon"><i data-lucide="chart-no-axes-column-increasing"></i></div>
         <div class="stat-info">
             <div class="stat-title">Média por Turno</div>
             <div class="stat-value">{{ stats.avg_shift_formatted }}</div>
@@ -111,7 +111,7 @@
     </div>
 
     <div class="stat-card accent-danger">
-        <div class="stat-icon">⚠️</div>
+        <div class="stat-icon"><i data-lucide="triangle-alert"></i></div>
         <div class="stat-info">
             <div class="stat-title">Fechamentos por Ausência</div>
             <div class="stat-value">{{ stats.total_auto_absence }}</div>
@@ -156,9 +156,9 @@
                     </td>
                     <td>
                         {% if entry.status == 'active' %}
-                        <span class="badge badge-success">🟢 Ativo</span>
+                        <span class="status-label status-active"><span class="status-dot"></span>Ativo</span>
                         {% else %}
-                        <span class="badge badge-warning">⏸️ Pausado</span>
+                        <span class="status-label status-paused"><span class="status-dot"></span>Pausado</span>
                         {% endif %}
                     </td>
                     <td>{{ entry.started_at_formatted }}</td>
@@ -180,9 +180,9 @@
 <!-- COLLABORATOR SUMMARY TABLE -->
 <div class="section-card">
     <div class="section-header">
-        <h2>👥 Desempenho dos Colaboradores ({{ users|length }})</h2>
+        <h2>Desempenho dos colaboradores <span class="section-count">{{ users|length }}</span></h2>
         <div class="search-box">
-            <span class="search-icon">🔍</span>
+            <i data-lucide="search" class="search-icon"></i>
             <input type="text" placeholder="Filtrar por nome ou ID..." data-table-search="usersTable">
         </div>
     </div>
@@ -221,21 +221,21 @@
                     </td>
                     <td>
                         {% if u.current_status == 'active' %}
-                        <span class="badge badge-success"><span class="pulse-dot"></span> Ativo</span>
+                        <span class="status-label status-active"><span class="status-dot"></span>Ativo</span>
                         {% elif u.current_status == 'paused' %}
-                        <span class="badge badge-warning">⏸️ Pausado</span>
+                        <span class="status-label status-paused"><span class="status-dot"></span>Pausado</span>
                         {% else %}
-                        <span class="badge badge-muted">⚪ Inativo</span>
+                        <span class="status-label status-inactive"><span class="status-dot"></span>Inativo</span>
                         {% endif %}
                     </td>
                     <td><strong>{{ u.shifts_count }}</strong></td>
                     <td><strong style="color: var(--info);">{{ u.worked_formatted }}</strong></td>
-                    <td><span class="badge badge-info">{{ u.worked_hours }}h</span></td>
+                    <td>{{ u.worked_hours }}h</td>
                     <td>{{ u.pause_formatted }}</td>
                     <td>{{ u.avg_shift_formatted }}</td>
                     <td>
                         {% if u.auto_absence_count > 0 %}
-                        <span class="badge badge-danger">{{ u.auto_absence_count }}</span>
+                        <span class="text-danger">{{ u.auto_absence_count }}</span>
                         {% else %}
                         <span class="text-dim">0</span>
                         {% endif %}
@@ -247,7 +247,7 @@
                                 Detalhes
                             </a>
                             <a href="{{ url_for('export_single_user', user_id=u.user_id, guild_id=u.guild_id) }}" class="btn btn-secondary btn-sm" title="Exportar CSV individual">
-                                📥
+                                <i data-lucide="download"></i>
                             </a>
                         </div>
                     </td>
@@ -258,7 +258,7 @@
     </div>
     {% else %}
     <div class="empty-state">
-        <div class="empty-state-icon">📋</div>
+        <i data-lucide="clipboard-list" class="empty-state-icon"></i>
         <h3>Nenhum registro encontrado</h3>
         <p>Não há pontos registrados com os filtros selecionados.</p>
     </div>

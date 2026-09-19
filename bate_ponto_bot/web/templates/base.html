@@ -13,13 +13,13 @@
 <body>
     <nav class="navbar">
         <a href="{{ url_for('index') }}" class="nav-brand">
-            <div class="brand-logo" aria-hidden="true"><span>L</span><span>L</span></div>
+            <div class="brand-logo" aria-hidden="true">LL</div>
             <span class="brand-copy"><strong>Bate-Ponto</strong><small>Gestão de jornada</small></span>
         </a>
         <ul class="nav-links">
             <li><a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">Visão geral</a></li>
             <li><a href="{{ url_for('events_page') }}" class="nav-link {% if request.endpoint == 'events_page' %}active{% endif %}">Auditoria</a></li>
-            <li><a href="{{ url_for('export_entries') }}" class="btn btn-secondary btn-sm" title="Exportar todos os registros">Exportar CSV</a></li>
+            <li><a href="{{ url_for('export_entries') }}" class="btn btn-secondary btn-sm" title="Exportar todos os registros"><i data-lucide="download"></i> Exportar CSV</a></li>
         </ul>
     </nav>
 
@@ -47,6 +47,7 @@
         <p><strong>Bate-Ponto</strong> &copy; {{ now().year if now is defined else '2026' }} &bull; Horários em Fortaleza (UTC−3)</p>
     </footer>
 
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>

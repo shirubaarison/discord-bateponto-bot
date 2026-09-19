@@ -1,4 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
+    if (window.lucide) window.lucide.createIcons();
     // Search Filter for Data Tables
     const searchInputs = document.querySelectorAll("[data-table-search]");
     searchInputs.forEach(input => {
@@ -61,12 +62,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
 
                 const eventTypeNames = {
-                    "started": "🟢 Ponto Iniciado",
-                    "paused": "⏸️ Ponto Pausado",
-                    "resumed": "▶️ Ponto Retomado",
-                    "finished": "🛑 Ponto Finalizado",
-                    "auto_absence_closed": "⚠️ Encerramento Automático (Ausência)",
-                    "auto_absence_return_notified": "ℹ️ Notificação de Retorno Pós-Ausência"
+                    "started": "Ponto iniciado",
+                    "paused": "Ponto pausado",
+                    "resumed": "Ponto retomado",
+                    "finished": "Ponto finalizado",
+                    "auto_absence_closed": "Encerramento automático por ausência",
+                    "auto_absence_return_notified": "Notificação de retorno pós-ausência"
                 };
 
                 let html = "";
