@@ -5,8 +5,10 @@
 {% block content %}
 <div class="page-header">
     <div class="page-title">
-        <h1>📊 Painel de Controle de Ponto</h1>
-        <p>Visão geral de colaboradores, horas trabalhadas e atividade em tempo real.</p>
+        <span class="page-eyebrow">Gestão de pessoas</span>
+        <h1>Painel de controle de ponto</h1>
+        <p>Uma visão clara da jornada, das pausas e da atividade da equipe.</p>
+        <span class="timezone-note">Horário de Fortaleza • UTC−3</span>
     </div>
     <div class="btn-group">
         <a href="{{ url_for('export_summary', guild_id=selected_guild_id, preset=active_preset if active_preset != 'custom' else None, start_date=start_date, end_date=end_date) }}" class="btn btn-success">

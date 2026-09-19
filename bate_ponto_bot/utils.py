@@ -40,6 +40,10 @@ def format_seconds(total_seconds: int) -> str:
 def format_dt(value: datetime | None) -> str:
     if value is None:
         return "desconhecido"
+    # PostgreSQL TIMESTAMPTZ values are normally timezone-aware. Treat a naive
+    # value as UTC as a defensive fallback instead of inheriting the host TZ.
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
     local_value = value.astimezone(LOCAL_TIMEZONE)
     month_names = [
         "janeiro",

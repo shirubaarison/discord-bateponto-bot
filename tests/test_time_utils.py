@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from bate_ponto_bot.bot import format_duration_words, format_seconds
+from bate_ponto_bot.bot import format_dt, format_duration_words, format_seconds
 from bate_ponto_bot.db import TimeEntry, worked_seconds
 
 
@@ -87,3 +87,15 @@ def test_format_duration_words_uses_singular_and_plural_units() -> None:
     assert format_duration_words(60) == "1 minuto"
     assert format_duration_words(61) == "1 minuto e 1 segundo"
     assert format_duration_words(125) == "2 minutos e 5 segundos"
+
+
+def test_format_dt_converts_utc_to_fortaleza_time() -> None:
+    value = datetime(2026, 9, 19, 15, 30, tzinfo=UTC)
+
+    assert format_dt(value) == "19 de setembro de 2026 às 12:30"
+
+
+def test_format_dt_treats_naive_database_values_as_utc() -> None:
+    value = datetime(2026, 9, 19, 15, 30)
+
+    assert format_dt(value) == "19 de setembro de 2026 às 12:30"

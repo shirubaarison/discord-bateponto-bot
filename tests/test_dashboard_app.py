@@ -142,7 +142,8 @@ def test_flask_app_routes() -> None:
         # 1. Test Index route
         res = client.get("/")
         assert res.status_code == 200
-        assert b"Painel de Controle de Ponto" in res.data
+        assert b"Painel de controle de ponto" in res.data
+        assert "Horário de Fortaleza" in res.text
         assert b"Colaboradores" in res.data
 
         # 2. Test Export Summary CSV
@@ -169,7 +170,7 @@ def test_flask_app_routes() -> None:
         # 6. Test Events / Audit Page
         res_events = client.get("/events")
         assert res_events.status_code == 200
-        assert b"Registro de Eventos" in res_events.data
+        assert b"Registro de eventos" in res_events.data
 
         # 7. Test API Entry Events endpoint
         res_api = client.get("/api/entries/10/events")

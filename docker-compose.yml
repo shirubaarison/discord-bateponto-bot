@@ -7,6 +7,7 @@ services:
       - .env
     environment:
       POSTGRES_HOST: postgres
+      TZ: America/Fortaleza
     depends_on:
       postgres:
         condition: service_healthy
@@ -20,6 +21,7 @@ services:
       POSTGRES_HOST: postgres
       DASHBOARD_HOST: 0.0.0.0
       DASHBOARD_PORT: 5000
+      TZ: America/Fortaleza
     ports:
       - "127.0.0.1:5000:5000"
     command: ["bate-ponto-dashboard"]
@@ -36,6 +38,7 @@ services:
       - .env
     environment:
       POSTGRES_HOST: postgres
+      TZ: America/Fortaleza
     command: ["alembic", "upgrade", "head"]
     depends_on:
       postgres:
@@ -49,6 +52,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-bate_ponto}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      TZ: America/Fortaleza
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
