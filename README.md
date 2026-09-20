@@ -97,7 +97,7 @@ Adicione os valores ao `.env`. Mantenha aspas simples ao redor do hash para pres
 
 ```env
 DASHBOARD_SECRET_KEY=resultado_do_openssl
-DASHBOARD_USERNAME=Admin
+DASHBOARD_USERNAME=admin
 DASHBOARD_PASSWORD_HASH='resultado_do_comando_de_hash'
 DASHBOARD_SECURE_COOKIES=true
 ```
@@ -155,17 +155,17 @@ Na VM, crie o runner fora do repositório e use o comando de cadastro temporári
 **Settings → Actions → Runners → New self-hosted runner → Linux x64**:
 
 ```bash
-mkdir -p /home/alyssonsilva40709/actions-runner
-cd /home/alyssonsilva40709/actions-runner
+mkdir -p /home/USUARIO_DA_VM/actions-runner
+cd /home/USUARIO_DA_VM/actions-runner
 # baixe e extraia o pacote indicado pelo GitHub nesta pasta
-./config.sh --url https://github.com/shirubaarison/BatePontoLL --token SEU_TOKEN --labels production
-sudo ./svc.sh install alyssonsilva40709
+./config.sh --url https://github.com/SEU_USUARIO/SEU_REPOSITORIO --token SEU_TOKEN --labels production
+sudo ./svc.sh install USUARIO_DA_VM
 sudo ./svc.sh start
 sudo ./svc.sh status
 ```
 
 O token de cadastro expira rapidamente e não deve ser salvo. O arquivo `.env` de produção continua
-somente em `/home/alyssonsilva40709/bot/.env`; a pipeline não o cria nem o substitui. Depois que o
+somente no diretório de produção da VM (por exemplo, `/opt/bate-ponto/.env`); a pipeline não o cria nem o substitui. Depois que o
 runner aparecer como **Idle** no GitHub, cada push em `main` passa pela aprovação do ambiente e
 executa migrações, atualização dos containers e a verificação de saúde do dashboard.
 
