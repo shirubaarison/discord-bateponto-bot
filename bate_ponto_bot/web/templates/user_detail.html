@@ -2,14 +2,6 @@
 
 {% block title %}{{ user.display_name or ('User ' ~ user_id) }} | Bate-Ponto Discord{% endblock %}
 
-{% block breadcrumb %}
-<a href="{{ url_for('index', guild_id=guild_id) }}">Visão geral</a>
-<span aria-hidden="true">/</span>
-<a href="{{ url_for('events_page') }}">Auditoria</a>
-<span aria-hidden="true">/</span>
-<span aria-current="page">Perfil</span>
-{% endblock %}
-
 {% block content %}
 <div style="margin-bottom: 1rem;">
     <a href="{{ url_for('index', guild_id=guild_id) }}" class="btn btn-secondary btn-sm">

@@ -3,15 +3,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const mobileMenuToggle = document.querySelector("[data-mobile-menu-toggle]");
     const mobileMenu = document.getElementById("main-navigation");
+    const mobileMenuBackdrop = document.querySelector("[data-mobile-menu-close].mobile-menu-backdrop");
     if (mobileMenuToggle && mobileMenu) {
         const closeMobileMenu = () => {
             mobileMenu.classList.remove("is-open");
+            mobileMenuBackdrop?.classList.remove("is-open");
             mobileMenuToggle.setAttribute("aria-expanded", "false");
             mobileMenuToggle.setAttribute("aria-label", "Abrir menu");
         };
 
         mobileMenuToggle.addEventListener("click", () => {
             const isOpen = mobileMenu.classList.toggle("is-open");
+            mobileMenuBackdrop?.classList.toggle("is-open", isOpen);
             mobileMenuToggle.setAttribute("aria-expanded", String(isOpen));
             mobileMenuToggle.setAttribute("aria-label", isOpen ? "Fechar menu" : "Abrir menu");
         });
@@ -19,6 +22,10 @@ document.addEventListener("DOMContentLoaded", () => {
         mobileMenu.querySelectorAll("a, button[type='submit']").forEach(item => {
             item.addEventListener("click", closeMobileMenu);
         });
+        mobileMenu.querySelectorAll("[data-mobile-menu-close]").forEach(item => {
+            item.addEventListener("click", closeMobileMenu);
+        });
+        mobileMenuBackdrop?.addEventListener("click", closeMobileMenu);
 
         document.addEventListener("keydown", (event) => {
             if (event.key === "Escape") closeMobileMenu();

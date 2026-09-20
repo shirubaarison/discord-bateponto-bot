@@ -23,8 +23,15 @@
             <i data-lucide="menu"></i>
         </button>
         <ul class="nav-links" id="main-navigation">
+            <li class="mobile-menu-header">
+                <span>Menu</span>
+                <button type="button" class="mobile-menu-close" data-mobile-menu-close aria-label="Fechar menu">&times;</button>
+            </li>
             <li><a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">Visão geral</a></li>
             <li><a href="{{ url_for('events_page') }}" class="nav-link {% if request.endpoint == 'events_page' %}active{% endif %}">Auditoria</a></li>
+            <li class="mobile-menu-item"><a href="{{ url_for('export_summary') }}" class="nav-link"><i data-lucide="download"></i> Exportar resumo</a></li>
+            <li class="mobile-menu-item"><a href="{{ url_for('export_entries') }}" class="nav-link"><i data-lucide="file-down"></i> Registros detalhados</a></li>
+            <li class="mobile-menu-spacer" aria-hidden="true"></li>
             <li>
                 <button type="button" class="nav-link theme-toggle" data-theme-toggle aria-label="Ativar tema escuro" title="Ativar tema escuro">
                     <i data-lucide="moon" data-theme-icon></i>
@@ -38,10 +45,7 @@
                 </form>
             </li>
         </ul>
-    </nav>
-
-    <nav class="breadcrumb" aria-label="Navegação estrutural">
-        {% block breadcrumb %}{% endblock %}
+        <button type="button" class="mobile-menu-backdrop" data-mobile-menu-close aria-label="Fechar menu"></button>
     </nav>
 
     <main class="container">
