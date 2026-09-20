@@ -148,7 +148,7 @@ nem o servidor precisa expor uma porta SSH à internet.
 
 No GitHub, crie o ambiente `production` em **Settings → Environments** e configure um revisor
 obrigatório antes do primeiro deploy. Proteja também a branch `main`, exigindo o check
-`Testes e qualidade` antes de aceitar alterações.
+`Tests and quality` antes de aceitar alterações.
 
 Na VM, crie o runner fora do repositório e use o comando de cadastro temporário exibido em
 **Settings → Actions → Runners → New self-hosted runner → Linux x64**:

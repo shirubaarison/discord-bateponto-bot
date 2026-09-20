@@ -14,40 +14,40 @@ permissions:
 
 jobs:
   test:
-    name: Testes e qualidade
+    name: Tests and quality
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
-      - name: Baixar código
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configurar Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Configurar uv
+      - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
-      - name: Instalar dependências bloqueadas
+      - name: Install locked dependencies
         run: uv sync --frozen --all-groups
 
-      - name: Verificar código
+      - name: Run lint
         run: uv run ruff check bate_ponto_bot tests
 
-      - name: Rodar testes
+      - name: Run tests
         run: uv run pytest -q
 
-      - name: Validar Docker Compose
+      - name: Validate Docker Compose
         run: |
           cp .env.example .env
           docker compose config --quiet
 
   deploy:
-    name: Deploy na GCP
+    name: Deploy to GCP
     needs: test
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
@@ -62,7 +62,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Atualizar aplicação
+      - name: Update application
         shell: bash
         run: |
           set -euo pipefail
@@ -77,7 +77,7 @@ jobs:
           curl --fail --retry 10 --retry-all-errors --retry-delay 2 \
             http://127.0.0.1:5000/healthz
 
-      - name: Exibir logs em caso de falha
+      - name: Show logs on failure
         if: failure()
         shell: bash
         run: |
