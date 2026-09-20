@@ -116,6 +116,7 @@ code {
 .brand-copy strong { font-family: var(--font-display); font-size: 1.05rem; letter-spacing: -0.02em; }
 
 .nav-links { display: flex; align-items: center; gap: 0.35rem; list-style: none; }
+.mobile-menu-toggle { display: none; }
 .nav-link {
     display: inline-flex;
     padding: 0.55rem 0.85rem;
@@ -365,6 +366,11 @@ a.user-display-name:hover { color: var(--blue); text-decoration: underline !impo
 @media (max-width: 520px) {
     .navbar { padding-inline: .7rem; }
     .nav-links { display: none; }
+    .mobile-menu-toggle { width: 38px; height: 38px; display: grid; place-items: center; margin-left: auto; color: var(--ink); background: var(--paper); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); cursor: pointer; }
+    .mobile-menu-toggle svg { width: 19px; height: 19px; }
+    .nav-links.is-open { display: flex; flex: 1 0 100%; flex-direction: column; align-items: stretch; gap: .2rem; padding: .45rem; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-card); }
+    .nav-links.is-open li, .nav-links.is-open .nav-link, .nav-links.is-open .logout-form { width: 100%; }
+    .nav-links.is-open .nav-link { justify-content: flex-start; }
     .breadcrumb { align-items: center; flex-wrap: wrap; gap: .45rem; padding: .7rem .8rem 0; }
     .breadcrumb-actions { display: flex; flex: 1 0 100%; justify-content: space-between; margin-left: 0; padding-top: .15rem; }
     .breadcrumb-action { min-height: 32px; padding: .35rem .5rem; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }

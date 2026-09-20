@@ -4,6 +4,7 @@
 
 {% block breadcrumb %}
 <span aria-current="page">Visão geral</span>
+<a href="{{ url_for('events_page') }}">Auditoria</a>
 <span class="breadcrumb-actions">
     <a href="{{ url_for('export_summary', guild_id=selected_guild_id, preset=active_preset if active_preset != 'custom' else None, start_date=start_date, end_date=end_date) }}" class="breadcrumb-action">
         <i data-lucide="download"></i> Exportar resumo

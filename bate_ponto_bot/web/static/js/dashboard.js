@@ -1,6 +1,30 @@
 document.addEventListener("DOMContentLoaded", () => {
     if (window.lucide) window.lucide.createIcons();
 
+    const mobileMenuToggle = document.querySelector("[data-mobile-menu-toggle]");
+    const mobileMenu = document.getElementById("main-navigation");
+    if (mobileMenuToggle && mobileMenu) {
+        const closeMobileMenu = () => {
+            mobileMenu.classList.remove("is-open");
+            mobileMenuToggle.setAttribute("aria-expanded", "false");
+            mobileMenuToggle.setAttribute("aria-label", "Abrir menu");
+        };
+
+        mobileMenuToggle.addEventListener("click", () => {
+            const isOpen = mobileMenu.classList.toggle("is-open");
+            mobileMenuToggle.setAttribute("aria-expanded", String(isOpen));
+            mobileMenuToggle.setAttribute("aria-label", isOpen ? "Fechar menu" : "Abrir menu");
+        });
+
+        mobileMenu.querySelectorAll("a, button[type='submit']").forEach(item => {
+            item.addEventListener("click", closeMobileMenu);
+        });
+
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") closeMobileMenu();
+        });
+    }
+
     const escapeHtml = (value) => String(value)
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
