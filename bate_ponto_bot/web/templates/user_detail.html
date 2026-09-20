@@ -164,6 +164,8 @@
                         <span class="text-muted">Encerrado pelo painel</span>
                         {% elif entry.close_reason == 'pause_timeout' %}
                         <span class="text-danger">Pausa excedeu 24 horas</span>
+                        {% elif entry.close_reason == 'active_timeout' %}
+                        <span class="text-danger">Ponto excedeu 24 horas</span>
                         {% elif entry.close_reason %}
                         <span class="text-muted">{{ entry.close_reason }}</span>
                         {% elif not entry.ended_at %}

@@ -127,6 +127,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     "finished": "Ponto finalizado",
                     "auto_absence_closed": "Encerramento automático por ausência",
                     "pause_timeout_closed": "Encerramento após 24 horas em pausa",
+                    "active_timeout_closed": "Encerramento após 24 horas de ponto",
                     "auto_absence_return_notified": "Notificação de retorno pós-ausência"
                 };
 

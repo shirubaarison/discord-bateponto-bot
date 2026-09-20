@@ -341,6 +341,38 @@ class Database:
                 )
             return entries
 
+    async def finish_expired_active_entries(
+        self, started_cutoff: datetime
+    ) -> list[TimeEntry]:
+        """Close active entries at the 24-hour maximum from their start time."""
+        assert self.pool is not None
+        async with self.pool.acquire() as conn, conn.transaction():
+            rows = await conn.fetch(
+                """
+                UPDATE time_entries
+                SET ended_at = started_at + INTERVAL '24 hours',
+                    status = 'closed',
+                    absence_started_at = NULL,
+                    absence_deadline_at = NULL,
+                    close_reason = 'active_timeout'
+                WHERE status = 'active'
+                  AND ended_at IS NULL
+                  AND started_at <= $1
+                RETURNING *
+                """,
+                started_cutoff,
+            )
+            entries = [_entry_from_row(row) for row in rows]
+            for entry in entries:
+                await self._add_event(
+                    conn,
+                    entry,
+                    "active_timeout_closed",
+                    entry.ended_at,
+                    {"active_limit_seconds": 24 * 60 * 60},
+                )
+            return entries
+
     async def pause_entry(
         self, entry: TimeEntry, reason: str, pause_started_at: datetime | None = None
     ) -> TimeEntry:

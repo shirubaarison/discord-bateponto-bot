@@ -160,9 +160,13 @@ class TimeClockBot(commands.Bot):
             try:
                 cutoff = utcnow() - timedelta(hours=24)
                 entries = await self.db.finish_expired_paused_entries(cutoff)
+                entries.extend(await self.db.finish_expired_active_entries(cutoff))
                 for entry in entries:
+                    timeout_kind = (
+                        "active_timeout" if entry.close_reason == "active_timeout" else "pause_timeout"
+                    )
                     self.log_interaction(
-                        "pause_timeout",
+                        timeout_kind,
                         "auto_closed",
                         guild_id=entry.guild_id,
                         user_id=entry.user_id,
@@ -174,13 +178,23 @@ class TimeClockBot(commands.Bot):
                         await self.delete_point_status_message(guild, entry.id)
                     if member:
                         try:
+                            if entry.close_reason == "active_timeout":
+                                title = "Ponto encerrado automaticamente"
+                                description = "Seu ponto foi encerrado após atingir 24 horas de duração."
+                                color = discord.Color.red()
+                                status_text = "Limite de 24 horas"
+                            else:
+                                title = "Ponto encerrado automaticamente"
+                                description = "Seu ponto foi encerrado após 24 horas em pausa."
+                                color = discord.Color.orange()
+                                status_text = "Pausa excedeu 24 horas"
                             await self.notify_member(
                                 member,
-                                "Ponto encerrado automaticamente",
-                                "Seu ponto foi encerrado após 24 horas em pausa.",
-                                color=discord.Color.orange(),
+                                title,
+                                description,
+                                color=color,
                                 fields=[
-                                    ("Status", "Encerrado", True),
+                                    ("Status", status_text, True),
                                     ("Fim", format_dt(entry.ended_at), True),
                                     (
                                         "Tempo trabalhado",
@@ -707,8 +721,6 @@ class TimeClockBot(commands.Bot):
 
             guild = self.get_guild(guild_id)
             member = guild.get_member(user_id) if guild else None
-            if guild is None or member is None:
-                return
 
             entry = await self.db.get_open_entry(guild_id, user_id)
             if not entry or entry.id != entry_id or entry.status != "active":
@@ -717,7 +729,7 @@ class TimeClockBot(commands.Bot):
                 return
 
             allowed_channels = await self.db.list_allowed_voice_channels(guild_id)
-            current_channel = member.voice.channel if member.voice else None
+            current_channel = member.voice.channel if member and member.voice else None
             if current_channel and current_channel.id in allowed_channels:
                 await self.db.clear_absence(entry)
                 return
@@ -735,34 +747,36 @@ class TimeClockBot(commands.Bot):
                 entry_id=finished.id,
                 deadline_at=deadline_at.isoformat(),
             )
-            await self.delete_point_status_message(guild, entry.id)
-            await self.notify_member(
-                member,
-                "Ponto encerrado automaticamente",
-                "Seu ponto foi encerrado porque você excedeu a tolerância de ausência.",
-                color=discord.Color.red(),
-                fields=[
-                    ("Status", "Encerrado", True),
-                    ("Fim", format_dt(finished.ended_at), True),
-                    ("Tempo trabalhado", format_seconds(worked_seconds(finished)), True),
-                ],
-            )
-            await self.audit(
-                guild,
-                "Ponto encerrado por ausência",
-                f"{member.mention} excedeu a tolerância configurada.",
-                color=discord.Color.red(),
-                fields=[
-                    (
-                        "Ausente desde",
-                        format_dt(entry.absence_started_at or deadline_at),
-                        True,
-                    ),
-                    ("Fim", format_dt(finished.ended_at), True),
-                    ("Tempo trabalhado", format_seconds(worked_seconds(finished)), True),
-                ],
-                user=member,
-            )
+            if guild:
+                await self.delete_point_status_message(guild, entry.id)
+            if member and guild:
+                await self.notify_member(
+                    member,
+                    "Ponto encerrado automaticamente",
+                    "Seu ponto foi encerrado porque você excedeu a tolerância de ausência.",
+                    color=discord.Color.red(),
+                    fields=[
+                        ("Status", "Encerrado", True),
+                        ("Fim", format_dt(finished.ended_at), True),
+                        ("Tempo trabalhado", format_seconds(worked_seconds(finished)), True),
+                    ],
+                )
+                await self.audit(
+                    guild,
+                    "Ponto encerrado por ausência",
+                    f"{member.mention} excedeu a tolerância configurada.",
+                    color=discord.Color.red(),
+                    fields=[
+                        (
+                            "Ausente desde",
+                            format_dt(entry.absence_started_at or deadline_at),
+                            True,
+                        ),
+                        ("Fim", format_dt(finished.ended_at), True),
+                        ("Tempo trabalhado", format_seconds(worked_seconds(finished)), True),
+                    ],
+                    user=member,
+                )
         except asyncio.CancelledError:
             raise
         except Exception:
