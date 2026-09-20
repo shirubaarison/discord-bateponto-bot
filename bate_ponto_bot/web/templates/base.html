@@ -37,6 +37,10 @@
         </ul>
     </nav>
 
+    <nav class="breadcrumb" aria-label="Navegação estrutural">
+        {% block breadcrumb %}{% endblock %}
+    </nav>
+
     <main class="container">
         {% block content %}{% endblock %}
     </main>

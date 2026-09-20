@@ -2,6 +2,12 @@
 
 {% block title %}{{ user.display_name or ('User ' ~ user_id) }} | Bate-Ponto Discord{% endblock %}
 
+{% block breadcrumb %}
+<a href="{{ url_for('index', guild_id=guild_id) }}">Visão geral</a>
+<span aria-hidden="true">/</span>
+<span aria-current="page">Perfil</span>
+{% endblock %}
+
 {% block content %}
 <div style="margin-bottom: 1rem;">
     <a href="{{ url_for('index', guild_id=guild_id) }}" class="btn btn-secondary btn-sm">
@@ -14,8 +20,10 @@
     <div style="display: flex; align-items: center; gap: 1.25rem;">
         <img src="{{ user.avatar_url or 'https://cdn.discordapp.com/embed/avatars/0.png' }}" alt="Avatar" style="width: 72px; height: 72px; border-radius: 50%; border: 3px solid var(--border-color); background-color: var(--bg-input);">
         <div>
-            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <div class="profile-heading">
                 <h1 style="font-size: 1.5rem; font-weight: 700;">{{ user.display_name or ('User ' ~ user_id) }}</h1>
+            </div>
+            <div class="profile-status">
                 {% if stats.current_status == 'active' %}
                 <span class="status-label status-active"><span class="status-dot"></span>Ponto ativo</span>
                 {% elif stats.current_status == 'paused' %}
@@ -77,7 +85,7 @@
     <div class="stat-card accent-info">
         <div class="stat-info">
             <div class="stat-title">Horas Trabalhadas</div>
-            <div class="stat-value">{{ stats.total_worked_hours }}h</div>
+            <div class="stat-value">{{ stats.total_worked_seconds // 3600 }}h</div>
             <div class="stat-sub">{{ stats.total_worked_formatted }}</div>
         </div>
     </div>

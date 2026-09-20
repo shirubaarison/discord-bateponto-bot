@@ -2,6 +2,12 @@
 
 {% block title %}Auditoria de Eventos | Bate-Ponto Discord{% endblock %}
 
+{% block breadcrumb %}
+<a href="{{ url_for('index') }}">Visão geral</a>
+<span aria-hidden="true">/</span>
+<span aria-current="page">Auditoria</span>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <div class="page-title">
