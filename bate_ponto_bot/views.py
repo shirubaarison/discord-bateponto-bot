@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
 import discord
 
-from bate_ponto_bot.utils import format_dt, format_seconds, utcnow, worked_seconds
+from bate_ponto_bot.models import WeeklyHours
+from bate_ponto_bot.utils import LOCAL_TIMEZONE, format_dt, format_seconds, utcnow, worked_seconds
 
 if TYPE_CHECKING:
     from bate_ponto_bot.bot import TimeClockBot
@@ -130,6 +132,8 @@ class TimeClockView(discord.ui.View):
             return
 
         finished = await self.bot.db.finish_entry(entry)
+        weekly_hours = await self.bot.db.list_weekly_hours(member.guild.id, member.id)
+        current_week_total = current_week_worked_seconds(weekly_hours)
         self.bot._cancel_absence_check(entry.id)
         self.bot.log_interaction(
             "button_finish",
@@ -149,6 +153,7 @@ class TimeClockView(discord.ui.View):
                 ("Fim", format_dt(finished.ended_at), True),
                 ("Tempo trabalhado", format_seconds(worked_seconds(finished)), True),
                 ("Tempo pausado", format_seconds(finished.pause_total_seconds), True),
+                ("Total na semana vigente", format_seconds(current_week_total), False),
             ],
         )
         await self.bot.audit(
@@ -161,6 +166,7 @@ class TimeClockView(discord.ui.View):
                 ("Fim", format_dt(finished.ended_at), True),
                 ("Tempo trabalhado", format_seconds(worked_seconds(finished)), True),
                 ("Tempo pausado", format_seconds(finished.pause_total_seconds), True),
+                ("Total na semana vigente", format_seconds(current_week_total), False),
             ],
             user=member,
         )
@@ -364,3 +370,83 @@ class TimeClockView(discord.ui.View):
             color=discord.Color.blurple(),
             fields=fields,
         )
+
+    @discord.ui.button(
+        label="Ver informações",
+        style=discord.ButtonStyle.secondary,
+        custom_id="timeclock:weekly_info",
+        row=1,
+    )
+    async def weekly_info_button(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        member = await require_member(interaction)
+        if member is None:
+            return
+
+        weekly_hours = await self.bot.db.list_weekly_hours(member.guild.id, member.id)
+        time_info = await self.bot.db.get_user_time_info(member.guild.id, member.id)
+        if not weekly_hours or time_info is None:
+            self.bot.log_interaction("button_weekly_info", "empty", interaction=interaction)
+            await self.bot.respond_control_interaction(
+                interaction,
+                "Você ainda não tem horas registradas.",
+            )
+            return
+
+        self.bot.log_interaction(
+            "button_weekly_info",
+            "success",
+            interaction=interaction,
+            count=len(weekly_hours),
+        )
+        current_week_total = current_week_worked_seconds(weekly_hours)
+        summary_fields = [
+            ("Primeiro bate-ponto", format_dt(time_info.first_started_at), True),
+            ("Último bate-ponto", format_dt(time_info.last_activity_at), True),
+            ("Tempo total", format_seconds(time_info.worked_seconds), True),
+            ("Pontos registrados", str(time_info.shifts_count), True),
+            ("Semana vigente", f"**{format_seconds(current_week_total)}**", False),
+        ]
+        await self.bot.respond_control_embed(
+            interaction,
+            "Informações do usuário",
+            f"Resumo de {member.mention} e horas registradas por semana.",
+            color=discord.Color.gold(),
+            fields=summary_fields + weekly_hours_fields(weekly_hours),
+        )
+
+
+def local_week_start() -> date:
+    today = utcnow().astimezone(LOCAL_TIMEZONE).date()
+    return today - timedelta(days=today.weekday())
+
+
+def current_week_worked_seconds(
+    items: list[WeeklyHours], week_start: date | None = None
+) -> int:
+    expected_week_start = week_start or local_week_start()
+    return next(
+        (item.worked_seconds for item in items if item.week_start == expected_week_start),
+        0,
+    )
+
+
+def weekly_hours_fields(
+    items: list[WeeklyHours], current_week_start: date | None = None
+) -> list[tuple[str, str, bool]]:
+    highlighted_week = current_week_start or local_week_start()
+    return [
+        (
+            ("Semana vigente • " if item.week_start == highlighted_week else "Semana • ")
+            + f"{item.week_start:%d/%m/%Y} a "
+            f"{item.week_start + timedelta(days=6):%d/%m/%Y}",
+            (
+                f"**{format_seconds(item.worked_seconds)}**"
+                if item.week_start == highlighted_week
+                else format_seconds(item.worked_seconds)
+            ),
+            False,
+        )
+        for item in items
+    ]

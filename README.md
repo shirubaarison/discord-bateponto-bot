@@ -5,6 +5,7 @@ Bot de bate-ponto para Discord com PostgreSQL.
 ## Recursos
 
 - Painel com botões para iniciar, finalizar, pausar/retomar, ver status e histórico.
+- Resumo individual com primeiro e último ponto, total acumulado e horas por semana.
 - Status individual pelo botão `Status`.
 - Aviso privado quando a pessoa sai e volta ao canal de voz permitido.
 - Configuração por servidor via comandos slash.

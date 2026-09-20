@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 import asyncpg
@@ -34,6 +34,20 @@ class TimeEntry:
     status_message_id: int | None
 
 
+@dataclass(frozen=True)
+class WeeklyHours:
+    week_start: date
+    worked_seconds: int
+
+
+@dataclass(frozen=True)
+class UserTimeInfo:
+    first_started_at: datetime
+    last_activity_at: datetime
+    worked_seconds: int
+    shifts_count: int
+
+
 def _settings_from_row(row: asyncpg.Record) -> GuildSettings:
     return GuildSettings(
         guild_id=int(row["guild_id"]),
@@ -60,6 +74,22 @@ def _entry_from_row(row: asyncpg.Record) -> TimeEntry:
         absence_deadline_at=row["absence_deadline_at"],
         close_reason=row["close_reason"],
         status_message_id=_optional_int(row["status_message_id"]),
+    )
+
+
+def _weekly_hours_from_row(row: asyncpg.Record) -> WeeklyHours:
+    return WeeklyHours(
+        week_start=row["week_start"],
+        worked_seconds=int(row["worked_seconds"]),
+    )
+
+
+def _user_time_info_from_row(row: asyncpg.Record) -> UserTimeInfo:
+    return UserTimeInfo(
+        first_started_at=row["first_started_at"],
+        last_activity_at=row["last_activity_at"],
+        worked_seconds=int(row["worked_seconds"]),
+        shifts_count=int(row["shifts_count"]),
     )
 
 

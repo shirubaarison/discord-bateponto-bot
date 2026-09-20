@@ -6,13 +6,24 @@ from typing import Any
 
 import asyncpg
 
-from bate_ponto_bot.models import GuildSettings, TimeEntry, _entry_from_row, _settings_from_row
+from bate_ponto_bot.models import (
+    GuildSettings,
+    TimeEntry,
+    UserTimeInfo,
+    WeeklyHours,
+    _entry_from_row,
+    _settings_from_row,
+    _user_time_info_from_row,
+    _weekly_hours_from_row,
+)
 from bate_ponto_bot.utils import _seconds_between, utcnow, worked_seconds
 
 __all__ = [
     "Database",
     "GuildSettings",
     "TimeEntry",
+    "UserTimeInfo",
+    "WeeklyHours",
     "utcnow",
     "worked_seconds",
 ]
@@ -394,6 +405,77 @@ class Database:
             limit,
         )
         return [_entry_from_row(row) for row in rows]
+
+    async def list_weekly_hours(
+        self, guild_id: int, user_id: int, limit: int = 12
+    ) -> list[WeeklyHours]:
+        """Return worked time grouped by the local week in which each shift started."""
+        rows = await self.fetch(
+            """
+            WITH entry_totals AS (
+                SELECT
+                    date_trunc(
+                        'week',
+                        started_at AT TIME ZONE 'America/Fortaleza'
+                    )::date AS week_start,
+                    GREATEST(
+                        0,
+                        EXTRACT(EPOCH FROM (COALESCE(ended_at, now()) - started_at))::BIGINT
+                        - pause_total_seconds::BIGINT
+                        - CASE
+                            WHEN status = 'paused' AND pause_started_at IS NOT NULL
+                            THEN EXTRACT(EPOCH FROM (now() - pause_started_at))::BIGINT
+                            ELSE 0
+                          END
+                    ) AS worked_seconds
+                FROM time_entries
+                WHERE guild_id = $1 AND user_id = $2
+            )
+            SELECT week_start, SUM(worked_seconds)::BIGINT AS worked_seconds
+            FROM entry_totals
+            GROUP BY week_start
+            ORDER BY week_start DESC
+            LIMIT $3
+            """,
+            guild_id,
+            user_id,
+            limit,
+        )
+        return [_weekly_hours_from_row(row) for row in rows]
+
+    async def get_user_time_info(self, guild_id: int, user_id: int) -> UserTimeInfo | None:
+        row = await self.fetchrow(
+            """
+            SELECT
+                MIN(started_at) AS first_started_at,
+                MAX(COALESCE(ended_at, started_at)) AS last_activity_at,
+                COUNT(*)::BIGINT AS shifts_count,
+                COALESCE(
+                    SUM(
+                        GREATEST(
+                            0,
+                            EXTRACT(
+                                EPOCH FROM (COALESCE(ended_at, now()) - started_at)
+                            )::BIGINT
+                            - pause_total_seconds::BIGINT
+                            - CASE
+                                WHEN status = 'paused' AND pause_started_at IS NOT NULL
+                                THEN EXTRACT(EPOCH FROM (now() - pause_started_at))::BIGINT
+                                ELSE 0
+                              END
+                        )
+                    ),
+                    0
+                )::BIGINT AS worked_seconds
+            FROM time_entries
+            WHERE guild_id = $1 AND user_id = $2
+            """,
+            guild_id,
+            user_id,
+        )
+        if row is None or row["first_started_at"] is None:
+            return None
+        return _user_time_info_from_row(row)
 
     async def list_pending_absences(self) -> list[TimeEntry]:
         rows = await self.fetch(

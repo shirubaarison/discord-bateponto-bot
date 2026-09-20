@@ -88,6 +88,29 @@ class TimeClockBot(commands.Bot):
         assert self.user is not None
         LOGGER.info("Bot conectado como %s (%s).", self.user, self.user.id)
         await self._restore_absence_checks()
+        await self._refresh_control_panels()
+
+    async def _refresh_control_panels(self) -> None:
+        """Refresh existing panel messages so newly deployed buttons become visible."""
+        for guild in self.guilds:
+            settings = await self.db.get_settings(guild.id)
+            if not settings.control_channel_id or not settings.panel_message_id:
+                continue
+
+            channel = guild.get_channel(settings.control_channel_id)
+            if not isinstance(channel, discord.TextChannel):
+                continue
+
+            try:
+                message = await channel.fetch_message(settings.panel_message_id)
+                embed = await self.build_control_panel_embed(guild)
+                await message.edit(embed=embed, view=TimeClockView(self))
+            except discord.NotFound:
+                LOGGER.warning("Painel configurado não existe mais no servidor %s.", guild.id)
+            except discord.Forbidden:
+                LOGGER.warning("Sem permissão para atualizar o painel no servidor %s.", guild.id)
+            except discord.HTTPException:
+                LOGGER.exception("Falha ao atualizar o painel no servidor %s.", guild.id)
 
     async def on_message(self, message: discord.Message) -> None:
         if message.guild is None or message.author.bot or message.pinned:
