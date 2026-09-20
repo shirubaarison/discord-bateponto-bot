@@ -115,6 +115,7 @@ def generate_entries_csv(
             "auto_absence": "Ausência automática",
             "pause_timeout": "Pausa excedeu 24 horas",
             "active_timeout": "Ponto excedeu 24 horas",
+            "admin_adjustment": "Ajuste administrativo",
             "manual": "Manual",
             None: "-",
         }

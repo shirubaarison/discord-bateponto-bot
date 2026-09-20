@@ -26,6 +26,7 @@ from bate_ponto_bot.web.discord_api import (
     resolve_discord_users,
 )
 from bate_ponto_bot.web.queries import (
+    edit_entry_times,
     finish_active_entry,
     get_active_entries,
     get_all_entries,
@@ -106,6 +107,11 @@ def parse_date_filters(
 
     active_preset = "custom" if (start_str or end_str) else "all"
     return start_dt, end_dt, active_preset
+
+
+def parse_datetime_local_input(value: str) -> datetime:
+    parsed = datetime.strptime(value.strip(), "%Y-%m-%dT%H:%M")
+    return parsed.replace(tzinfo=LOCAL_TIMEZONE).astimezone(UTC)
 
 
 def get_db() -> psycopg.Connection:
@@ -317,6 +323,39 @@ def create_app(settings: Settings | None = None) -> Flask:
         finish_active_entry(conn, entry_id)
         guild_id = request.form.get("guild_id", type=int)
         return redirect(url_for("index", guild_id=guild_id))
+
+    @app.post("/entries/<int:entry_id>/edit")
+    def edit_entry_from_dashboard(entry_id: int) -> Response | tuple[str, int]:
+        if not valid_csrf_token():
+            return "Requisição inválida.", 400
+
+        try:
+            started_at = parse_datetime_local_input(request.form.get("started_at", ""))
+            ended_at = parse_datetime_local_input(request.form.get("ended_at", ""))
+        except ValueError:
+            return "Informe datas válidas para início e fim.", 400
+
+        if ended_at <= started_at:
+            return "O fim deve ser posterior ao início.", 400
+
+        conn = get_db()
+        entry = edit_entry_times(
+            conn,
+            entry_id=entry_id,
+            started_at=started_at,
+            ended_at=ended_at,
+            editor_username=dashboard_username,
+        )
+        if entry is None:
+            return "Somente pontos finalizados podem ser editados.", 409
+
+        return redirect(
+            url_for(
+                "user_detail",
+                user_id=entry["user_id"],
+                guild_id=entry["guild_id"],
+            )
+        )
 
     @app.route("/healthz")
     def healthz() -> tuple[dict[str, str], int]:

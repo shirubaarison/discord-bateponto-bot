@@ -131,7 +131,7 @@
                     <th>Fim</th>
                     <th>Tempo Trabalhado</th>
                     <th>Motivo de Encerramento</th>
-                    <th>Eventos</th>
+                    <th>Ações</th>
                 </tr>
             </thead>
             <tbody>
@@ -166,6 +166,8 @@
                         <span class="text-danger">Pausa excedeu 24 horas</span>
                         {% elif entry.close_reason == 'active_timeout' %}
                         <span class="text-danger">Ponto excedeu 24 horas</span>
+                        {% elif entry.close_reason == 'admin_adjustment' %}
+                        <span class="text-muted">Ajuste administrativo</span>
                         {% elif entry.close_reason %}
                         <span class="text-muted">{{ entry.close_reason }}</span>
                         {% elif not entry.ended_at %}
@@ -175,9 +177,16 @@
                         {% endif %}
                     </td>
                     <td>
-                        <button type="button" class="btn btn-secondary btn-sm" data-view-events="{{ entry.id }}" title="Ver timeline de eventos">
-                            <i data-lucide="history"></i> Timeline
-                        </button>
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-secondary btn-sm" data-view-events="{{ entry.id }}" title="Ver timeline de eventos">
+                                <i data-lucide="history"></i> Timeline
+                            </button>
+                            {% if entry.ended_at %}
+                            <button type="button" class="btn btn-secondary btn-sm" data-edit-entry="{{ entry.id }}" data-started-at="{{ entry.started_at_input }}" data-ended-at="{{ entry.ended_at_input }}" title="Editar horários">
+                                <i data-lucide="pencil"></i> Editar
+                            </button>
+                            {% endif %}
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}

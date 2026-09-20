@@ -81,6 +81,50 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    const editModal = document.getElementById("editEntryModal");
+    const editForm = document.getElementById("editEntryForm");
+    const editStartedAt = document.getElementById("editStartedAt");
+    const editEndedAt = document.getElementById("editEndedAt");
+
+    const closeEditModal = () => {
+        if (editModal) editModal.classList.remove("show");
+    };
+
+    document.querySelectorAll("[data-close-edit]").forEach(btn => {
+        btn.addEventListener("click", closeEditModal);
+    });
+
+    document.querySelectorAll("[data-edit-entry]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            if (!editModal || !editForm || !editStartedAt || !editEndedAt) return;
+            const entryId = btn.getAttribute("data-edit-entry");
+            editForm.action = `/entries/${entryId}/edit`;
+            editStartedAt.value = btn.getAttribute("data-started-at") || "";
+            editEndedAt.value = btn.getAttribute("data-ended-at") || "";
+            editEndedAt.min = editStartedAt.value;
+            editModal.classList.add("show");
+            editStartedAt.focus();
+        });
+    });
+
+    if (editStartedAt && editEndedAt) {
+        editStartedAt.addEventListener("change", () => {
+            editEndedAt.min = editStartedAt.value;
+        });
+    }
+
+    if (editModal) {
+        editModal.addEventListener("click", (event) => {
+            if (event.target === editModal) closeEditModal();
+        });
+    }
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && editModal?.classList.contains("show")) {
+            closeEditModal();
+        }
+    });
+
     // Events Modal Handling
     const modal = document.getElementById("eventsModal");
     const modalTitle = document.getElementById("modalEntryTitle");
@@ -128,6 +172,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     "auto_absence_closed": "Encerramento automático por ausência",
                     "pause_timeout_closed": "Encerramento após 24 horas em pausa",
                     "active_timeout_closed": "Encerramento após 24 horas de ponto",
+                    "edited": "Horários editados pelo painel",
                     "auto_absence_return_notified": "Notificação de retorno pós-ausência"
                 };
 

@@ -74,6 +74,34 @@
         </div>
     </div>
 
+    <!-- Modal for administrative time edits -->
+    <div class="modal-backdrop" id="editEntryModal" role="dialog" aria-modal="true" aria-labelledby="editEntryModalTitle">
+        <div class="modal-card confirm-modal-card">
+            <div class="modal-header">
+                <h3 id="editEntryModalTitle" style="font-size: 1.1rem; font-weight: 600;">Editar horários</h3>
+                <button type="button" class="btn btn-secondary btn-sm" data-close-edit aria-label="Fechar">&times;</button>
+            </div>
+            <form method="POST" id="editEntryForm">
+                <div class="modal-body edit-entry-fields">
+                    <p class="text-muted">A alteração ficará registrada na auditoria do sistema.</p>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="form-group">
+                        <label for="editStartedAt">Início</label>
+                        <input type="datetime-local" id="editStartedAt" name="started_at" class="input-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editEndedAt">Fim</label>
+                        <input type="datetime-local" id="editEndedAt" name="ended_at" class="input-control" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-close-edit>Cancelar</button>
+                    <button type="submit" class="btn btn-primary btn-sm">Salvar alterações</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <footer class="footer">
         <p><strong>Bate Ponto LL</strong> &copy; {{ now().year if now is defined else '2026' }}</p>
     </footer>

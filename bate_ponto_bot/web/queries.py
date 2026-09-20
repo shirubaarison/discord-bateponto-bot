@@ -7,7 +7,7 @@ from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from bate_ponto_bot.utils import format_dt, format_seconds, utcnow
+from bate_ponto_bot.utils import LOCAL_TIMEZONE, format_dt, format_seconds, utcnow
 
 
 def _calc_entry_worked_seconds(entry: dict[str, Any], at: datetime | None = None) -> int:
@@ -32,6 +32,14 @@ def _calc_entry_worked_seconds(entry: dict[str, Any], at: datetime | None = None
 
     total_diff = max(0, int((end - started_at).total_seconds()))
     return max(0, total_diff - pause_total)
+
+
+def _datetime_local_input(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(LOCAL_TIMEZONE).strftime("%Y-%m-%dT%H:%M")
 
 
 def get_guilds(conn: Connection) -> list[dict[str, Any]]:
@@ -421,9 +429,11 @@ def get_user_entries(
                 "worked_formatted": format_seconds(w_sec),
                 "pause_formatted": format_seconds(int(row["pause_total_seconds"] or 0)),
                 "started_at_formatted": format_dt(row["started_at"]),
+                "started_at_input": _datetime_local_input(row["started_at"]),
                 "ended_at_formatted": (
                     format_dt(row["ended_at"]) if row.get("ended_at") else "Em andamento"
                 ),
+                "ended_at_input": _datetime_local_input(row.get("ended_at")),
             }
         )
     return results
@@ -704,3 +714,94 @@ def finish_active_entry(conn: Connection, entry_id: int) -> bool:
             ),
         )
     return True
+
+
+def edit_entry_times(
+    conn: Connection,
+    entry_id: int,
+    started_at: datetime,
+    ended_at: datetime,
+    editor_username: str,
+) -> dict[str, Any] | None:
+    """Update a closed entry's timestamps and persist an immutable audit record."""
+    edited_at = utcnow()
+    with conn.transaction(), conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "SELECT * FROM time_entries WHERE id = %s FOR UPDATE",
+            (entry_id,),
+        )
+        old_entry = cur.fetchone()
+        if old_entry is None or old_entry["ended_at"] is None:
+            return None
+
+        cur.execute(
+            """
+            UPDATE time_entries
+            SET started_at = %s,
+                ended_at = %s,
+                status = 'closed',
+                close_reason = 'admin_adjustment'
+            WHERE id = %s
+            RETURNING *
+            """,
+            (started_at, ended_at, entry_id),
+        )
+        updated_entry = cur.fetchone()
+        assert updated_entry is not None
+
+        cur.execute(
+            """
+            INSERT INTO time_entry_edits (
+                entry_id,
+                editor_username,
+                edited_at,
+                old_started_at,
+                old_ended_at,
+                new_started_at,
+                new_ended_at,
+                old_pause_total_seconds,
+                new_pause_total_seconds,
+                old_close_reason,
+                new_close_reason
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                entry_id,
+                editor_username,
+                edited_at,
+                old_entry["started_at"],
+                old_entry["ended_at"],
+                started_at,
+                ended_at,
+                old_entry["pause_total_seconds"],
+                updated_entry["pause_total_seconds"],
+                old_entry["close_reason"],
+                "admin_adjustment",
+            ),
+        )
+        cur.execute(
+            """
+            INSERT INTO time_events (
+                entry_id, guild_id, user_id, event_type, occurred_at, metadata
+            )
+            VALUES (%s, %s, %s, 'edited', %s, %s)
+            """,
+            (
+                entry_id,
+                updated_entry["guild_id"],
+                updated_entry["user_id"],
+                edited_at,
+                Jsonb(
+                    {
+                        "source": "dashboard",
+                        "editor": editor_username,
+                        "old_started_at": old_entry["started_at"].isoformat(),
+                        "old_ended_at": old_entry["ended_at"].isoformat(),
+                        "new_started_at": started_at.isoformat(),
+                        "new_ended_at": ended_at.isoformat(),
+                    }
+                ),
+            ),
+        )
+        return dict(updated_entry)
