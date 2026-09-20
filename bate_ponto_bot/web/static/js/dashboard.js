@@ -30,6 +30,14 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
+    document.querySelectorAll("form[data-confirm]").forEach(form => {
+        form.addEventListener("submit", (event) => {
+            if (!window.confirm(form.getAttribute("data-confirm"))) {
+                event.preventDefault();
+            }
+        });
+    });
+
     // Events Modal Handling
     const modal = document.getElementById("eventsModal");
     const modalTitle = document.getElementById("modalEntryTitle");

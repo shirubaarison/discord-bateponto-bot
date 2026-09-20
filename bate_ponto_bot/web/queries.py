@@ -5,6 +5,7 @@ from typing import Any
 
 from psycopg import Connection
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 from bate_ponto_bot.utils import format_dt, format_seconds, utcnow
 
@@ -428,6 +429,111 @@ def get_user_entries(
     return results
 
 
+def get_user_daily_totals(
+    conn: Connection,
+    user_id: int,
+    guild_id: int | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Get worked time grouped by local calendar day for the profile chart."""
+    where_clauses = ["user_id = %s"]
+    params: list[Any] = [user_id]
+
+    if guild_id:
+        params.append(guild_id)
+        where_clauses.append("guild_id = %s")
+    if start_date:
+        params.append(start_date)
+        where_clauses.append("started_at >= %s")
+    if end_date:
+        params.append(end_date)
+        where_clauses.append("started_at <= %s")
+
+    query = f"""
+        WITH entry_totals AS (
+            SELECT
+                started_at,
+                COALESCE(ended_at, now()) AS effective_end,
+                GREATEST(
+                    1,
+                    EXTRACT(EPOCH FROM (COALESCE(ended_at, now()) - started_at))::BIGINT
+                ) AS elapsed_seconds,
+                GREATEST(
+                    0,
+                    EXTRACT(EPOCH FROM (COALESCE(ended_at, now()) - started_at))::BIGINT
+                    - pause_total_seconds::BIGINT
+                    - CASE
+                        WHEN status = 'paused' AND pause_started_at IS NOT NULL
+                        THEN EXTRACT(EPOCH FROM (now() - pause_started_at))::BIGINT
+                        ELSE 0
+                      END
+                ) AS net_worked_seconds
+            FROM time_entries
+            WHERE {" AND ".join(where_clauses)}
+        ), daily_slices AS (
+            SELECT
+                local_day::date AS worked_date,
+                net_worked_seconds,
+                elapsed_seconds,
+                GREATEST(
+                    0,
+                    EXTRACT(
+                        EPOCH FROM (
+                            LEAST(
+                                effective_end,
+                                (local_day + INTERVAL '1 day')
+                                    AT TIME ZONE 'America/Fortaleza'
+                            )
+                            - GREATEST(
+                                started_at,
+                                local_day AT TIME ZONE 'America/Fortaleza'
+                            )
+                        )
+                    )::BIGINT
+                ) AS overlap_seconds
+            FROM entry_totals
+            CROSS JOIN LATERAL generate_series(
+                date_trunc('day', started_at AT TIME ZONE 'America/Fortaleza'),
+                date_trunc('day', effective_end AT TIME ZONE 'America/Fortaleza'),
+                INTERVAL '1 day'
+            ) AS generated(local_day)
+        )
+        SELECT
+            worked_date,
+            ROUND(
+                SUM(
+                    net_worked_seconds::NUMERIC
+                    * overlap_seconds
+                    / elapsed_seconds
+                )
+            )::BIGINT AS worked_seconds
+        FROM daily_slices
+        GROUP BY worked_date
+        ORDER BY worked_date ASC
+    """
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(query, params)
+        rows = list(cur.fetchall())
+
+    max_seconds = max((int(row["worked_seconds"]) for row in rows), default=0)
+    return [
+        {
+            "date": row["worked_date"].isoformat(),
+            "date_label": row["worked_date"].strftime("%d/%m"),
+            "date_full": row["worked_date"].strftime("%d/%m/%Y"),
+            "worked_seconds": int(row["worked_seconds"]),
+            "worked_formatted": format_seconds(int(row["worked_seconds"])),
+            "bar_percent": (
+                max(3, round(int(row["worked_seconds"]) / max_seconds * 100))
+                if max_seconds
+                else 0
+            ),
+        }
+        for row in rows
+    ]
+
+
 def get_all_entries(
     conn: Connection,
     guild_id: int | None = None,
@@ -546,3 +652,52 @@ def get_recent_events(
         }
         for row in rows
     ]
+
+
+def finish_active_entry(conn: Connection, entry_id: int) -> bool:
+    """Close an open time entry from the authenticated dashboard."""
+    finished_at = utcnow()
+    with conn.transaction(), conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE time_entries
+            SET ended_at = %s,
+                pause_total_seconds = pause_total_seconds + CASE
+                    WHEN status = 'paused' AND pause_started_at IS NOT NULL
+                    THEN GREATEST(
+                        0,
+                        EXTRACT(EPOCH FROM (%s - pause_started_at))::INTEGER
+                    )
+                    ELSE 0
+                END,
+                status = 'closed',
+                pause_started_at = NULL,
+                pause_reason = NULL,
+                absence_started_at = NULL,
+                absence_deadline_at = NULL,
+                close_reason = 'admin_dashboard'
+            WHERE id = %s AND ended_at IS NULL
+            RETURNING id, guild_id, user_id
+            """,
+            (finished_at, finished_at, entry_id),
+        )
+        entry = cur.fetchone()
+        if entry is None:
+            return False
+
+        cur.execute(
+            """
+            INSERT INTO time_events (
+                entry_id, guild_id, user_id, event_type, occurred_at, metadata
+            )
+            VALUES (%s, %s, %s, 'finished', %s, %s)
+            """,
+            (
+                entry["id"],
+                entry["guild_id"],
+                entry["user_id"],
+                finished_at,
+                Jsonb({"source": "dashboard"}),
+            ),
+        )
+    return True

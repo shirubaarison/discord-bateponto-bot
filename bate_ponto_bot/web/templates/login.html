@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title>Entrar | Bate Ponto LL</title>
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,6 +14,10 @@
     <link rel="apple-touch-icon" href="https://bate-ponto.com.br/wp-content/uploads/2025/02/cropped-cropped-bate-pontologo-32x32-1-180x180.png">
 </head>
 <body class="login-page">
+    <button type="button" class="theme-toggle login-theme-toggle" data-theme-toggle aria-label="Ativar tema escuro" title="Ativar tema escuro">
+        <i data-lucide="moon" data-theme-icon></i>
+        <span class="sr-only" data-theme-label>Ativar tema escuro</span>
+    </button>
     <main class="login-shell">
         <section class="login-card" aria-labelledby="login-title">
             <span class="login-brand">Bate Ponto LL</span>
@@ -37,5 +42,6 @@
             </form>
         </section>
     </main>
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 </body>
 </html>

@@ -50,7 +50,6 @@
                     <th>Data / Hora</th>
                     <th>Tipo de Evento</th>
                     <th>Colaborador</th>
-                    <th>Detalhes / Metadados</th>
                 </tr>
             </thead>
             <tbody>
@@ -80,13 +79,6 @@
                                 {{ u_info.display_name or u_info.username or ('User ' ~ ev.user_id) }}
                             </a>
                         </div>
-                    </td>
-                    <td style="font-size: 0.8rem; color: var(--text-muted);">
-                        {% if ev.metadata and ev.metadata != '{}' %}
-                        <code>{{ ev.metadata }}</code>
-                        {% else %}
-                        <span class="text-dim">-</span>
-                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}

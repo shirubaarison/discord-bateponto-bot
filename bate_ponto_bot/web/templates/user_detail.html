@@ -82,14 +82,6 @@
         </div>
     </div>
 
-    <div class="stat-card accent-warning">
-        <div class="stat-info">
-            <div class="stat-title">Tempo em Pausa</div>
-            <div class="stat-value">{{ stats.total_pause_formatted }}</div>
-            <div class="stat-sub">Intervalos somados</div>
-        </div>
-    </div>
-
     <div class="stat-card accent-primary">
         <div class="stat-info">
             <div class="stat-title">Média por Turno</div>
@@ -98,14 +90,26 @@
         </div>
     </div>
 
-    <div class="stat-card accent-danger">
-        <div class="stat-info">
-            <div class="stat-title">Fechamentos por Ausência</div>
-            <div class="stat-value">{{ stats.total_auto_absence }}</div>
-            <div class="stat-sub">Tolerância estourada</div>
+</div>
+
+{% if daily_totals %}
+<div class="section-card">
+    <div class="section-header">
+        <h2>Horas trabalhadas por dia</h2>
+        <span class="chart-caption">Período selecionado</span>
+    </div>
+    <div class="daily-chart" role="img" aria-label="Gráfico de horas trabalhadas por dia">
+        {% for day in daily_totals %}
+        <div class="daily-chart-item" tabindex="0" aria-label="{{ day.date_full }}: {{ day.worked_formatted }}" data-tooltip="{{ day.date_full }} • {{ day.worked_formatted }}">
+            <div class="daily-chart-track" aria-hidden="true">
+                <span class="daily-chart-bar" style="height: {{ day.bar_percent }}%;"></span>
+            </div>
+            <time class="daily-chart-date" datetime="{{ day.date }}">{{ day.date_label }}</time>
         </div>
+        {% endfor %}
     </div>
 </div>
+{% endif %}
 
 <!-- SHIFT HISTORY TABLE -->
 <div class="section-card">
@@ -126,7 +130,6 @@
                     <th>Início</th>
                     <th>Fim</th>
                     <th>Tempo Trabalhado</th>
-                    <th>Pausa</th>
                     <th>Motivo de Encerramento</th>
                     <th>Eventos</th>
                 </tr>
@@ -152,12 +155,13 @@
                         {% endif %}
                     </td>
                     <td><strong style="color: var(--info);">{{ entry.worked_formatted }}</strong></td>
-                    <td>{{ entry.pause_formatted }}</td>
                     <td>
                         {% if entry.close_reason == 'auto_absence' %}
                         <span class="text-danger">Ausência automática</span>
                         {% elif entry.close_reason == 'manual' %}
                         <span class="text-muted">Manual</span>
+                        {% elif entry.close_reason == 'admin_dashboard' %}
+                        <span class="text-muted">Encerrado pelo painel</span>
                         {% elif entry.close_reason %}
                         <span class="text-muted">{{ entry.close_reason }}</span>
                         {% elif not entry.ended_at %}

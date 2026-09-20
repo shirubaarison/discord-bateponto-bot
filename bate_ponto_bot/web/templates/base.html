@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Dashboard | Bate-Ponto Discord{% endblock %}</title>
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,12 +16,18 @@
 <body>
     <nav class="navbar">
         <a href="{{ url_for('index') }}" class="nav-brand">
+            <img src="https://bate-ponto.com.br/wp-content/uploads/2025/02/cropped-cropped-bate-pontologo-32x32-1-192x192.png" alt="" class="brand-mark" width="36" height="36">
             <span class="brand-copy"><strong>Bate Ponto LL</strong></span>
         </a>
         <ul class="nav-links">
             <li><a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">Visão geral</a></li>
             <li><a href="{{ url_for('events_page') }}" class="nav-link {% if request.endpoint == 'events_page' %}active{% endif %}">Auditoria</a></li>
-            <li><a href="{{ url_for('export_entries') }}" class="btn btn-secondary btn-sm" title="Exportar todos os registros"><i data-lucide="download"></i> Exportar CSV</a></li>
+            <li>
+                <button type="button" class="nav-link theme-toggle" data-theme-toggle aria-label="Ativar tema escuro" title="Ativar tema escuro">
+                    <i data-lucide="moon" data-theme-icon></i>
+                    <span class="sr-only" data-theme-label>Ativar tema escuro</span>
+                </button>
+            </li>
             <li>
                 <form action="{{ url_for('logout') }}" method="POST" class="logout-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

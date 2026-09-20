@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
@@ -11,6 +11,7 @@ from werkzeug.test import TestResponse
 
 from bate_ponto_bot.config import Settings
 from bate_ponto_bot.web.app import create_app, parse_date_filters
+from bate_ponto_bot.web.queries import finish_active_entry, get_user_daily_totals
 
 TEST_PASSWORD = "test-password"
 
@@ -143,6 +144,16 @@ def test_flask_app_routes() -> None:
             "close_reason": None,
         }
     ]
+    mock_active_entries = [
+        {
+            "id": 10,
+            "guild_id": 111,
+            "user_id": 222,
+            "status": "active",
+            "started_at_formatted": "1 de junho de 2026 às 08:00",
+            "worked_formatted": "02:00:00",
+        }
+    ]
     mock_events = [
         {
             "id": 1,
@@ -163,10 +174,26 @@ def test_flask_app_routes() -> None:
             return_value=[{"guild_id": 111}, {"guild_id": 333}],
         ),
         patch("bate_ponto_bot.web.app.get_dashboard_stats", return_value=mock_stats),
-        patch("bate_ponto_bot.web.app.get_active_entries", return_value=[]),
+        patch("bate_ponto_bot.web.app.get_active_entries", return_value=mock_active_entries),
+        patch(
+            "bate_ponto_bot.web.app.finish_active_entry", return_value=True
+        ) as mock_finish_active_entry,
         patch("bate_ponto_bot.web.app.get_users_summary", return_value=mock_users),
         patch("bate_ponto_bot.web.app.get_user_stats", return_value=mock_stats),
         patch("bate_ponto_bot.web.app.get_user_entries", return_value=mock_entries),
+        patch(
+            "bate_ponto_bot.web.app.get_user_daily_totals",
+            return_value=[
+                {
+                    "date": "2026-06-01",
+                    "date_label": "01/06",
+                    "date_full": "01/06/2026",
+                    "worked_seconds": 7200,
+                    "worked_formatted": "02:00:00",
+                    "bar_percent": 100,
+                }
+            ],
+        ),
         patch("bate_ponto_bot.web.app.get_all_entries", return_value=mock_entries),
         patch("bate_ponto_bot.web.app.get_recent_events", return_value=mock_events),
         patch("bate_ponto_bot.web.app.get_entry_events", return_value=mock_events),
@@ -206,12 +233,27 @@ def test_flask_app_routes() -> None:
         assert "Todos os Servidores" not in res.text
         assert '<option value="111" selected>' in res.text
         assert "Bate-Ponto" in res.text
+        assert "brand-mark" in res.text
         assert b"Colaboradores" in res.data
+        assert '<div class="stat-value">2h</div>' in res.text
         assert '<div class="stat-title">Tempo em Pausa</div>' not in res.text
         assert '<div class="stat-title">Média por Turno</div>' not in res.text
         assert '<div class="stat-title">Fechamentos por Ausência</div>' not in res.text
+        assert "<th>Tempo em Pausa</th>" not in res.text
+        assert "data-theme-toggle" in res.text
+        assert "Encerrar ponto" in res.text
+        assert "Exportar todos os registros" not in res.text
         assert "default-src 'self'" in res.headers["Content-Security-Policy"]
         assert res.headers["X-Frame-Options"] == "DENY"
+
+        csrf_match = re.search(r'name="csrf_token" value="([^"]+)"', res.text)
+        assert csrf_match is not None
+        finish_response = client.post(
+            "/entries/10/finish",
+            data={"csrf_token": csrf_match.group(1), "guild_id": "111"},
+        )
+        assert finish_response.status_code == 302
+        mock_finish_active_entry.assert_called_once_with(mock_conn, 10)
 
         # 3. Test Export Summary CSV
         res_csv = client.get("/export/summary")
@@ -228,6 +270,11 @@ def test_flask_app_routes() -> None:
         res_user = client.get("/users/222")
         assert res_user.status_code == 200
         assert b"Total de Turnos" in res_user.data
+        assert "Horas trabalhadas por dia" in res_user.text
+        assert "daily-chart-bar" in res_user.text
+        assert '<div class="stat-title">Tempo em Pausa</div>' not in res_user.text
+        assert '<div class="stat-title">Fechamentos por Ausência</div>' not in res_user.text
+        assert "<th>Pausa</th>" not in res_user.text
 
         # 6. Test Export Single User CSV
         res_user_csv = client.get("/export/user/222")
@@ -238,6 +285,7 @@ def test_flask_app_routes() -> None:
         res_events = client.get("/events")
         assert res_events.status_code == 200
         assert b"Registro de eventos" in res_events.data
+        assert "Detalhes / Metadados" not in res_events.text
 
         # 8. Test API Entry Events endpoint
         res_api = client.get("/api/entries/10/events")
@@ -319,3 +367,59 @@ def test_dashboard_sets_secure_session_cookie() -> None:
     assert "Secure" in cookie
     assert "HttpOnly" in cookie
     assert "SameSite=Strict" in cookie
+
+
+def test_finish_active_entry_updates_entry_and_creates_event() -> None:
+    connection = MagicMock()
+    cursor = connection.cursor.return_value.__enter__.return_value
+    cursor.fetchone.return_value = {"id": 10, "guild_id": 111, "user_id": 222}
+
+    result = finish_active_entry(connection, 10)
+
+    assert result is True
+    assert cursor.execute.call_count == 2
+    update_query = cursor.execute.call_args_list[0].args[0]
+    event_query = cursor.execute.call_args_list[1].args[0]
+    assert "close_reason = 'admin_dashboard'" in update_query
+    assert "INSERT INTO time_events" in event_query
+
+
+def test_finish_active_entry_does_not_create_duplicate_event() -> None:
+    connection = MagicMock()
+    cursor = connection.cursor.return_value.__enter__.return_value
+    cursor.fetchone.return_value = None
+
+    result = finish_active_entry(connection, 10)
+
+    assert result is False
+    assert cursor.execute.call_count == 1
+
+
+def test_get_user_daily_totals_formats_chart_data() -> None:
+    connection = MagicMock()
+    cursor = connection.cursor.return_value.__enter__.return_value
+    cursor.fetchall.return_value = [
+        {"worked_date": date(2026, 9, 17), "worked_seconds": 3600},
+        {"worked_date": date(2026, 9, 18), "worked_seconds": 7200},
+    ]
+
+    result = get_user_daily_totals(connection, user_id=222, guild_id=111)
+
+    assert result == [
+        {
+            "date": "2026-09-17",
+            "date_label": "17/09",
+            "date_full": "17/09/2026",
+            "worked_seconds": 3600,
+            "worked_formatted": "01:00:00",
+            "bar_percent": 50,
+        },
+        {
+            "date": "2026-09-18",
+            "date_label": "18/09",
+            "date_full": "18/09/2026",
+            "worked_seconds": 7200,
+            "worked_formatted": "02:00:00",
+            "bar_percent": 100,
+        },
+    ]

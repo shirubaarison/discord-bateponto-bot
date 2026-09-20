@@ -76,11 +76,10 @@
         </div>
     </div>
 
-    <div class="stat-card accent-info">
+    <div class="stat-card accent-warning">
         <div class="stat-info">
             <div class="stat-title">Horas Trabalhadas</div>
-            <div class="stat-value">{{ stats.total_worked_hours }}h</div>
-            <div class="stat-sub">{{ stats.total_worked_formatted }}</div>
+            <div class="stat-value">{{ stats.total_worked_seconds // 3600 }}h</div>
         </div>
     </div>
 
@@ -127,9 +126,18 @@
                     <td>{{ entry.started_at_formatted }}</td>
                     <td><strong>{{ entry.worked_formatted }}</strong></td>
                     <td>
-                        <a href="{{ url_for('user_detail', user_id=entry.user_id, guild_id=entry.guild_id) }}" class="btn btn-secondary btn-sm">
-                            Ver Perfil
-                        </a>
+                        <div class="btn-group">
+                            <a href="{{ url_for('user_detail', user_id=entry.user_id, guild_id=entry.guild_id) }}" class="btn btn-secondary btn-sm">
+                                Ver Perfil
+                            </a>
+                            <form method="POST" action="{{ url_for('finish_entry_from_dashboard', entry_id=entry.id) }}" class="inline-action-form" data-confirm="Tem certeza que deseja encerrar este ponto?">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="guild_id" value="{{ entry.guild_id }}">
+                                <button type="submit" class="btn btn-danger btn-sm">
+                                    Encerrar ponto
+                                </button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
@@ -159,7 +167,6 @@
                     <th>Total Turnos</th>
                     <th>Tempo Trabalhado</th>
                     <th>Horas</th>
-                    <th>Tempo em Pausa</th>
                     <th>Média/Turno</th>
                     <th>Ausências</th>
                     <th>Última Atividade</th>
@@ -192,7 +199,6 @@
                     <td><strong>{{ u.shifts_count }}</strong></td>
                     <td><strong style="color: var(--info);">{{ u.worked_formatted }}</strong></td>
                     <td>{{ u.worked_hours }}h</td>
-                    <td>{{ u.pause_formatted }}</td>
                     <td>{{ u.avg_shift_formatted }}</td>
                     <td>
                         {% if u.auto_absence_count > 0 %}

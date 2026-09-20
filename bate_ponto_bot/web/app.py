@@ -26,12 +26,14 @@ from bate_ponto_bot.web.discord_api import (
     resolve_discord_users,
 )
 from bate_ponto_bot.web.queries import (
+    finish_active_entry,
     get_active_entries,
     get_all_entries,
     get_dashboard_stats,
     get_entry_events,
     get_guilds,
     get_recent_events,
+    get_user_daily_totals,
     get_user_entries,
     get_user_stats,
     get_users_summary,
@@ -174,6 +176,13 @@ def create_app(settings: Settings | None = None) -> Flask:
             session[CSRF_SESSION_KEY] = token
         return token
 
+    def valid_csrf_token() -> bool:
+        supplied_csrf = request.form.get("csrf_token", "")
+        expected_csrf = session.get(CSRF_SESSION_KEY, "")
+        return bool(expected_csrf) and _constant_time_text_equal(
+            supplied_csrf, str(expected_csrf)
+        )
+
     def login_client_key() -> str:
         return request.remote_addr or "unknown"
 
@@ -294,12 +303,20 @@ def create_app(settings: Settings | None = None) -> Flask:
 
     @app.post("/logout")
     def logout() -> Response | tuple[str, int]:
-        supplied_csrf = request.form.get("csrf_token", "")
-        expected_csrf = session.get(CSRF_SESSION_KEY, "")
-        if not expected_csrf or not _constant_time_text_equal(supplied_csrf, str(expected_csrf)):
+        if not valid_csrf_token():
             return "Requisição inválida.", 400
         session.clear()
         return redirect(url_for("login"))
+
+    @app.post("/entries/<int:entry_id>/finish")
+    def finish_entry_from_dashboard(entry_id: int) -> Response | tuple[str, int]:
+        if not valid_csrf_token():
+            return "Requisição inválida.", 400
+
+        conn = get_db()
+        finish_active_entry(conn, entry_id)
+        guild_id = request.form.get("guild_id", type=int)
+        return redirect(url_for("index", guild_id=guild_id))
 
     @app.route("/healthz")
     def healthz() -> tuple[dict[str, str], int]:
@@ -373,6 +390,9 @@ def create_app(settings: Settings | None = None) -> Flask:
         entries = get_user_entries(
             conn, user_id=user_id, guild_id=guild_id_param, start_date=start_dt, end_date=end_dt
         )
+        daily_totals = get_user_daily_totals(
+            conn, user_id=user_id, guild_id=guild_id_param, start_date=start_dt, end_date=end_dt
+        )
 
         resolved_user = resolve_discord_user(app.config.get("DISCORD_TOKEN"), user_id)
         resolved_guild = (
@@ -389,6 +409,7 @@ def create_app(settings: Settings | None = None) -> Flask:
             guild=resolved_guild,
             stats=user_stats,
             entries=entries,
+            daily_totals=daily_totals,
             active_preset=active_preset,
             start_date=start_date_str or "",
             end_date=end_date_str or "",
