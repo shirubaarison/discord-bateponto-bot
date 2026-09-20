@@ -59,11 +59,11 @@
     <form method="GET" action="{{ url_for('user_detail', user_id=user_id, guild_id=guild_id) }}" class="filter-form">
         <div class="form-group">
             <label for="start_date">De:</label>
-            <input type="date" id="start_date" name="start_date" class="input-control" value="{{ start_date }}">
+            <input type="date" lang="en-CA" id="start_date" name="start_date" class="input-control" value="{{ start_date }}">
         </div>
         <div class="form-group">
             <label for="end_date">Até:</label>
-            <input type="date" id="end_date" name="end_date" class="input-control" value="{{ end_date }}">
+            <input type="date" lang="en-CA" id="end_date" name="end_date" class="input-control" value="{{ end_date }}">
         </div>
         <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
         {% if active_preset != 'all' %}

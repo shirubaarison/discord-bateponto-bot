@@ -128,8 +128,10 @@ code {
 }
 .nav-link:hover, .nav-link.active { color: var(--indigo); background: transparent; }
 .logout-form { display: flex; }
-.breadcrumb { display: none; }
-.breadcrumb-actions { display: flex; align-items: center; gap: .45rem; margin-left: auto; }
+.breadcrumb { display: flex; align-items: center; gap: .45rem; max-width: 1400px; margin: 0 auto; padding: .75rem max(1.25rem, calc((100vw - 1400px) / 2)); color: var(--muted); font-size: .74rem; }
+.breadcrumb a { color: var(--indigo); text-decoration: none; }
+.breadcrumb [aria-current="page"] { color: var(--ink); font-weight: 700; }
+.breadcrumb-actions { display: none; align-items: center; gap: .45rem; margin-left: auto; }
 .breadcrumb-action { display: inline-flex; align-items: center; gap: .25rem; color: var(--indigo); font-size: .72rem; font-weight: 700; text-decoration: none; }
 .breadcrumb-action svg { width: 13px; height: 13px; }
 .logout-button { border: 0; font-family: inherit; cursor: pointer; }
@@ -363,10 +365,8 @@ a.user-display-name:hover { color: var(--blue); text-decoration: underline !impo
 @media (max-width: 520px) {
     .navbar { padding-inline: .7rem; }
     .nav-links { display: none; }
-    .breadcrumb { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem; padding: .7rem .8rem 0; color: var(--muted); font-size: .74rem; }
-    .breadcrumb a { color: var(--indigo); text-decoration: none; }
-    .breadcrumb [aria-current="page"] { color: var(--ink); font-weight: 700; }
-    .breadcrumb-actions { flex: 1 0 100%; justify-content: space-between; margin-left: 0; padding-top: .15rem; }
+    .breadcrumb { align-items: center; flex-wrap: wrap; gap: .45rem; padding: .7rem .8rem 0; }
+    .breadcrumb-actions { display: flex; flex: 1 0 100%; justify-content: space-between; margin-left: 0; padding-top: .15rem; }
     .breadcrumb-action { min-height: 32px; padding: .35rem .5rem; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
     .brand-mark { width: 32px; height: 32px; }
     .brand-copy strong { font-size: .95rem; }
@@ -375,8 +375,9 @@ a.user-display-name:hover { color: var(--blue); text-decoration: underline !impo
     .filter-presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: .25rem; }
     .filter-presets > span { grid-column: 1 / -1; }
     .filter-btn { padding-inline: .3rem; text-align: center; font-size: .76rem; }
-    .filter-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: .55rem; }
-    .filter-form .form-group { display: grid; align-items: stretch; gap: .25rem; min-width: 0; }
+    .filter-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; column-gap: 1rem; row-gap: .55rem; align-items: stretch; }
+    .filter-form .form-group { display: grid; grid-template-rows: auto 42px; align-items: stretch; gap: .25rem; width: 100%; min-width: 0; }
+    .filter-form .form-group label { text-align: left; }
     .filter-form .input-control { width: 100%; min-width: 0; }
     .filter-form .input-control[type="date"] { min-width: 0; min-height: 42px; padding-inline: .55rem; font-size: .76rem; }
     .filter-form > .btn { grid-column: 1 / -1; width: 100%; }
