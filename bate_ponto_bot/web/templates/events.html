@@ -72,8 +72,12 @@
                         <span class="status-label status-danger"><span class="status-dot"></span>Pausa excedeu 24 horas</span>
                         {% elif ev.event_type == 'active_timeout_closed' %}
                         <span class="status-label status-danger"><span class="status-dot"></span>Ponto excedeu 24 horas</span>
+                        {% elif ev.event_type == 'edited' %}
+                        <span class="status-label status-info"><span class="status-dot"></span>Horários ajustados manualmente</span>
+                        {% elif ev.event_type == 'auto_absence_return_notified' %}
+                        <span class="status-label status-info"><span class="status-dot"></span>Retorno após ausência notificado</span>
                         {% else %}
-                        <span class="status-label">{{ ev.event_type }}</span>
+                        <span class="status-label"><span class="status-dot"></span>{{ ev.event_type|replace('_', ' ')|capitalize }}</span>
                         {% endif %}
                     </td>
                     <td>
