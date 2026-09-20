@@ -1,0 +1,85 @@
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# The deploy runner never receives repository secrets. Its production .env stays
+# only on the VM, outside the repository.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Testes e qualidade
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configurar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Instalar dependências bloqueadas
+        run: uv sync --frozen --all-groups
+
+      - name: Verificar código
+        run: uv run ruff check bate_ponto_bot tests
+
+      - name: Rodar testes
+        run: uv run pytest -q
+
+      - name: Validar Docker Compose
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+
+  deploy:
+    name: Deploy na GCP
+    needs: test
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: [self-hosted, linux, x64, production]
+    environment:
+      name: production
+      url: https://www.maskeneulen.works
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    timeout-minutes: 20
+
+    steps:
+      - name: Atualizar aplicação
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /home/alyssonsilva40709/bot
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+          docker compose build bot dashboard migrate
+          docker compose up -d postgres
+          docker compose run --rm migrate
+          docker compose up -d bot dashboard
+          curl --fail --retry 10 --retry-connrefused http://127.0.0.1:5000/healthz
+
+      - name: Exibir logs em caso de falha
+        if: failure()
+        shell: bash
+        run: |
+          cd /home/alyssonsilva40709/bot
+          docker compose ps
+          docker compose logs --tail=100 bot dashboard

@@ -139,6 +139,35 @@ Para apenas verificar formatação sem alterar arquivos:
 uv run ruff format --check .
 ```
 
+## CI/CD
+
+Todo pull request e push para `main` executa lint, testes e validação do Docker Compose no GitHub
+Actions. Um push aprovado em `main` também pode fazer deploy automático na GCP por meio de um
+runner auto-hospedado, instalado na própria VM. Assim, o GitHub não precisa guardar uma chave SSH,
+nem o servidor precisa expor uma porta SSH à internet.
+
+No GitHub, crie o ambiente `production` em **Settings → Environments** e configure um revisor
+obrigatório antes do primeiro deploy. Proteja também a branch `main`, exigindo o check
+`Testes e qualidade` antes de aceitar alterações.
+
+Na VM, crie o runner fora do repositório e use o comando de cadastro temporário exibido em
+**Settings → Actions → Runners → New self-hosted runner → Linux x64**:
+
+```bash
+mkdir -p /home/alyssonsilva40709/actions-runner
+cd /home/alyssonsilva40709/actions-runner
+# baixe e extraia o pacote indicado pelo GitHub nesta pasta
+./config.sh --url https://github.com/shirubaarison/BatePontoLL --token SEU_TOKEN --labels production
+sudo ./svc.sh install alyssonsilva40709
+sudo ./svc.sh start
+sudo ./svc.sh status
+```
+
+O token de cadastro expira rapidamente e não deve ser salvo. O arquivo `.env` de produção continua
+somente em `/home/alyssonsilva40709/bot/.env`; a pipeline não o cria nem o substitui. Depois que o
+runner aparecer como **Idle** no GitHub, cada push em `main` passa pela aprovação do ambiente e
+executa migrações, atualização dos containers e a verificação de saúde do dashboard.
+
 ## Comandos
 
 Todos os comandos de configuração exigem permissão `Manage Server`.
