@@ -363,15 +363,16 @@ a.user-display-name:hover { color: var(--blue); text-decoration: underline !impo
     .nav-links { display: none; }
     .mobile-menu-toggle { width: 38px; height: 38px; display: grid; place-items: center; margin-left: auto; color: var(--ink); background: var(--paper); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); cursor: pointer; }
     .mobile-menu-toggle svg { width: 19px; height: 19px; }
-    .nav-links.is-open { position: fixed; inset: 0; z-index: 1102; display: flex; flex-direction: column; align-items: stretch; gap: .2rem; width: 100%; height: 100dvh; padding: 1rem; background: var(--paper); border: 0; border-radius: 0; box-shadow: none; }
+    .nav-links.is-open { position: fixed; inset: 1rem auto 1rem 1rem; z-index: 1102; display: flex; flex-direction: column; align-items: stretch; gap: .2rem; width: min(360px, 50vw); min-width: 260px; max-width: calc(100vw - 2rem); height: auto; padding: 1rem; background: var(--paper); border: 1px solid var(--line-strong); border-radius: var(--radius-md); box-shadow: 0 24px 70px rgba(0,0,0,.35); }
     .nav-links.is-open li, .nav-links.is-open .nav-link, .nav-links.is-open .logout-form { width: 100%; }
     .nav-links.is-open .nav-link { justify-content: flex-start; }
     .nav-links.is-open .mobile-menu-header { display: flex; align-items: center; justify-content: space-between; padding: .25rem .15rem 1.25rem; color: var(--muted); font-size: .78rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
     .nav-links.is-open .mobile-menu-close { display: grid; width: 36px; height: 36px; place-items: center; color: var(--ink); background: var(--bg-input); border: 1px solid var(--line-strong); border-radius: 50%; font-size: 1.4rem; line-height: 1; cursor: pointer; }
     .nav-links.is-open .mobile-menu-item { display: block; }
     .nav-links.is-open .mobile-menu-spacer { display: block; flex: 1; }
-    .nav-links.is-open .nav-link { min-height: 44px; padding: .65rem .75rem; border-radius: var(--radius-sm); }
-    .mobile-menu-backdrop.is-open { display: block; position: fixed; inset: 0; z-index: 1101; background: rgba(0, 0, 0, .45); backdrop-filter: blur(5px); }
+    .nav-links.is-open .nav-link { display: flex; align-items: center; gap: .55rem; min-height: 42px; padding: .6rem .65rem; border-radius: var(--radius-sm); }
+    .nav-links.is-open .nav-link svg { width: 18px; height: 18px; flex: 0 0 18px; }
+    .mobile-menu-backdrop.is-open { display: block; position: fixed; inset: 0; z-index: 1101; background: rgba(0, 0, 0, .42); backdrop-filter: blur(10px); }
     .brand-mark { width: 32px; height: 32px; }
     .brand-copy strong { font-size: .95rem; }
     .nav-link { padding-inline: .35rem; font-size: .72rem; }
