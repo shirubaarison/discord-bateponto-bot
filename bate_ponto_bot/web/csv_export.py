@@ -113,6 +113,7 @@ def generate_entries_csv(
 
         close_reason_map = {
             "auto_absence": "Ausência automática",
+            "pause_timeout": "Pausa excedeu 24 horas",
             "manual": "Manual",
             None: "-",
         }

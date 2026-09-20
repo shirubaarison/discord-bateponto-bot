@@ -30,12 +30,55 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
+    const confirmModal = document.getElementById("confirmModal");
+    const confirmMessage = document.getElementById("confirmModalMessage");
+    const confirmAction = document.querySelector("[data-confirm-action]");
+    const closeConfirmModal = () => {
+        if (confirmModal) confirmModal.classList.remove("show");
+        if (confirmAction) confirmAction.disabled = false;
+    };
+    let pendingForm = null;
+
     document.querySelectorAll("form[data-confirm]").forEach(form => {
         form.addEventListener("submit", (event) => {
-            if (!window.confirm(form.getAttribute("data-confirm"))) {
-                event.preventDefault();
+            if (!confirmModal || !confirmMessage || !confirmAction) return;
+            event.preventDefault();
+            pendingForm = form;
+            confirmMessage.textContent = form.getAttribute("data-confirm");
+            confirmModal.classList.add("show");
+            confirmAction.focus();
+        });
+    });
+
+    document.querySelectorAll("[data-close-confirm]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            pendingForm = null;
+            closeConfirmModal();
+        });
+    });
+
+    if (confirmAction) {
+        confirmAction.addEventListener("click", () => {
+            if (!pendingForm) return;
+            confirmAction.disabled = true;
+            pendingForm.submit();
+        });
+    }
+
+    if (confirmModal) {
+        confirmModal.addEventListener("click", (event) => {
+            if (event.target === confirmModal) {
+                pendingForm = null;
+                closeConfirmModal();
             }
         });
+    }
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && confirmModal?.classList.contains("show")) {
+            pendingForm = null;
+            closeConfirmModal();
+        }
     });
 
     // Events Modal Handling
@@ -83,6 +126,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     "resumed": "Ponto retomado",
                     "finished": "Ponto finalizado",
                     "auto_absence_closed": "Encerramento automático por ausência",
+                    "pause_timeout_closed": "Encerramento após 24 horas em pausa",
                     "auto_absence_return_notified": "Notificação de retorno pós-ausência"
                 };
 

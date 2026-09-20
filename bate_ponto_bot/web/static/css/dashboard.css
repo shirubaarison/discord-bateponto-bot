@@ -274,21 +274,21 @@ a.user-display-name:hover { color: var(--blue); text-decoration: underline !impo
 .login-theme-toggle:hover { color: var(--indigo); border-color: var(--indigo); }
 
 .chart-caption { color: var(--dim); font-size: .76rem; }
-.daily-chart { min-height: 270px; display: flex; align-items: stretch; gap: .75rem; padding: 1.35rem 1.25rem 1rem; overflow-x: auto; }
-.daily-chart-item { min-width: 68px; flex: 1 0 68px; display: grid; grid-template-rows: 222px 1.6rem; gap: .4rem; position: relative; text-align: center; outline: none; cursor: pointer; }
-.daily-chart-item::after { content: attr(data-tooltip); min-width: max-content; padding: .45rem .6rem; position: absolute; top: .35rem; left: 50%; z-index: 3; color: #fff; background: var(--tooltip-bg); border-radius: var(--radius-sm); box-shadow: 0 8px 22px rgba(0, 0, 0, .22); font-size: .72rem; font-weight: 600; font-variant-numeric: tabular-nums; opacity: 0; pointer-events: none; transform: translate(-50%, 6px); transition: opacity 140ms ease, transform 140ms ease; }
-.daily-chart-item:hover::after,
-.daily-chart-item:focus-visible::after { opacity: 1; transform: translate(-50%, 0); }
-.daily-chart-item:first-child::after { left: 0; transform: translate(0, 6px); }
-.daily-chart-item:first-child:hover::after,
-.daily-chart-item:first-child:focus-visible::after { transform: translate(0, 0); }
-.daily-chart-item:last-child::after { right: 0; left: auto; transform: translate(0, 6px); }
-.daily-chart-item:last-child:hover::after,
-.daily-chart-item:last-child:focus-visible::after { transform: translate(0, 0); }
-.daily-chart-item:focus-visible { border-radius: var(--radius-sm); box-shadow: inset 0 0 0 2px var(--indigo); }
-.daily-chart-track { height: 222px; display: flex; align-items: flex-end; overflow: hidden; background: linear-gradient(to top, transparent 24%, var(--line) 25%, transparent 26%, transparent 49%, var(--line) 50%, transparent 51%, transparent 74%, var(--line) 75%, transparent 76%); border-bottom: 1px solid var(--line-strong); }
-.daily-chart-bar { width: min(38px, 68%); min-height: 3px; margin: 0 auto; display: block; background: var(--amber); border-radius: 5px 5px 0 0; transition: height 180ms ease; }
-.daily-chart-date { color: var(--muted); font-size: .72rem; font-weight: 600; }
+.weekly-chart { min-height: 270px; display: flex; align-items: stretch; gap: .75rem; padding: 1.35rem 1.25rem 1rem; overflow-x: auto; }
+.weekly-chart-item { min-width: 92px; flex: 1 0 92px; display: grid; grid-template-rows: 222px 1.6rem; gap: .4rem; position: relative; text-align: center; outline: none; cursor: pointer; }
+.weekly-chart-item::after { content: attr(data-tooltip); min-width: max-content; padding: .45rem .6rem; position: absolute; top: .35rem; left: 50%; z-index: 3; color: #fff; background: var(--tooltip-bg); border-radius: var(--radius-sm); box-shadow: 0 8px 22px rgba(0, 0, 0, .22); font-size: .72rem; font-weight: 600; font-variant-numeric: tabular-nums; opacity: 0; pointer-events: none; transform: translate(-50%, 6px); transition: opacity 140ms ease, transform 140ms ease; }
+.weekly-chart-item:hover::after,
+.weekly-chart-item:focus-visible::after { opacity: 1; transform: translate(-50%, 0); }
+.weekly-chart-item:first-child::after { left: 0; transform: translate(0, 6px); }
+.weekly-chart-item:first-child:hover::after,
+.weekly-chart-item:first-child:focus-visible::after { transform: translate(0, 0); }
+.weekly-chart-item:last-child::after { right: 0; left: auto; transform: translate(0, 6px); }
+.weekly-chart-item:last-child:hover::after,
+.weekly-chart-item:last-child:focus-visible::after { transform: translate(0, 0); }
+.weekly-chart-item:focus-visible { border-radius: var(--radius-sm); box-shadow: inset 0 0 0 2px var(--indigo); }
+.weekly-chart-track { height: 222px; display: flex; align-items: flex-end; overflow: hidden; background: linear-gradient(to top, transparent 24%, var(--line) 25%, transparent 26%, transparent 49%, var(--line) 50%, transparent 51%, transparent 74%, var(--line) 75%, transparent 76%); border-bottom: 1px solid var(--line-strong); }
+.weekly-chart-bar { width: min(48px, 68%); min-height: 3px; margin: 0 auto; display: block; background: var(--amber); border-radius: 5px 5px 0 0; transition: height 180ms ease; }
+.weekly-chart-date { color: var(--muted); font-size: .72rem; font-weight: 600; }
 
 :root[data-theme="dark"] .navbar { background: rgba(25, 20, 29, .97); }
 :root[data-theme="dark"] .section-header,
@@ -305,6 +305,7 @@ a.user-display-name:hover { color: var(--blue); text-decoration: underline !impo
 .modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: none; align-items: center; justify-content: center; padding: 1rem; background: rgba(6,37,56,.72); backdrop-filter: blur(5px); }
 .modal-backdrop.show { display: flex; }
 .modal-card { width: min(600px, 100%); max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; background: #fff; border-radius: 24px 24px 24px 8px; box-shadow: 0 25px 70px rgba(0,0,0,.25); }
+.confirm-modal-card { width: min(440px, 100%); }
 .modal-header, .modal-footer { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; border-bottom: 1px solid var(--line); }
 .modal-footer { justify-content: flex-end; border-top: 1px solid var(--line); border-bottom: 0; }
 .modal-body { padding: 1.25rem; overflow-y: auto; }

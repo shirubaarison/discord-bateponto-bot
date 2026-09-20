@@ -11,7 +11,7 @@ from werkzeug.test import TestResponse
 
 from bate_ponto_bot.config import Settings
 from bate_ponto_bot.web.app import create_app, parse_date_filters
-from bate_ponto_bot.web.queries import finish_active_entry, get_user_daily_totals
+from bate_ponto_bot.web.queries import finish_active_entry, get_user_weekly_totals
 
 TEST_PASSWORD = "test-password"
 
@@ -182,7 +182,7 @@ def test_flask_app_routes() -> None:
         patch("bate_ponto_bot.web.app.get_user_stats", return_value=mock_stats),
         patch("bate_ponto_bot.web.app.get_user_entries", return_value=mock_entries),
         patch(
-            "bate_ponto_bot.web.app.get_user_daily_totals",
+            "bate_ponto_bot.web.app.get_user_weekly_totals",
             return_value=[
                 {
                     "date": "2026-06-01",
@@ -270,8 +270,8 @@ def test_flask_app_routes() -> None:
         res_user = client.get("/users/222")
         assert res_user.status_code == 200
         assert b"Total de Turnos" in res_user.data
-        assert "Horas trabalhadas por dia" in res_user.text
-        assert "daily-chart-bar" in res_user.text
+        assert "Horas trabalhadas por semana" in res_user.text
+        assert "weekly-chart-bar" in res_user.text
         assert '<div class="stat-title">Tempo em Pausa</div>' not in res_user.text
         assert '<div class="stat-title">Fechamentos por Ausência</div>' not in res_user.text
         assert "<th>Pausa</th>" not in res_user.text
@@ -395,29 +395,29 @@ def test_finish_active_entry_does_not_create_duplicate_event() -> None:
     assert cursor.execute.call_count == 1
 
 
-def test_get_user_daily_totals_formats_chart_data() -> None:
+def test_get_user_weekly_totals_formats_chart_data() -> None:
     connection = MagicMock()
     cursor = connection.cursor.return_value.__enter__.return_value
     cursor.fetchall.return_value = [
-        {"worked_date": date(2026, 9, 17), "worked_seconds": 3600},
-        {"worked_date": date(2026, 9, 18), "worked_seconds": 7200},
+        {"week_start": date(2026, 9, 14), "worked_seconds": 3600},
+        {"week_start": date(2026, 9, 21), "worked_seconds": 7200},
     ]
 
-    result = get_user_daily_totals(connection, user_id=222, guild_id=111)
+    result = get_user_weekly_totals(connection, user_id=222, guild_id=111)
 
     assert result == [
         {
-            "date": "2026-09-17",
-            "date_label": "17/09",
-            "date_full": "17/09/2026",
+            "date": "2026-09-14",
+            "date_label": "14/09",
+            "date_full": "14/09/2026 a 20/09/2026",
             "worked_seconds": 3600,
             "worked_formatted": "01:00:00",
             "bar_percent": 50,
         },
         {
-            "date": "2026-09-18",
-            "date_label": "18/09",
-            "date_full": "18/09/2026",
+            "date": "2026-09-21",
+            "date_label": "21/09",
+            "date_full": "21/09/2026 a 27/09/2026",
             "worked_seconds": 7200,
             "worked_formatted": "02:00:00",
             "bar_percent": 100,

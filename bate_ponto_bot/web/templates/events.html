@@ -68,6 +68,8 @@
                         <span class="status-label status-inactive"><span class="status-dot"></span>Ponto finalizado</span>
                         {% elif ev.event_type == 'auto_absence_closed' %}
                         <span class="status-label status-danger"><span class="status-dot"></span>Ausência automática</span>
+                        {% elif ev.event_type == 'pause_timeout_closed' %}
+                        <span class="status-label status-danger"><span class="status-dot"></span>Pausa excedeu 24 horas</span>
                         {% else %}
                         <span class="status-label">{{ ev.event_type }}</span>
                         {% endif %}

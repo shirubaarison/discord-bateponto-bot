@@ -57,6 +57,23 @@
         </div>
     </div>
 
+    <!-- Modal for dashboard confirmations -->
+    <div class="modal-backdrop" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
+        <div class="modal-card confirm-modal-card">
+            <div class="modal-header">
+                <h3 id="confirmModalTitle" style="font-size: 1.1rem; font-weight: 600;">Confirmar ação</h3>
+                <button type="button" class="btn btn-secondary btn-sm" data-close-confirm aria-label="Fechar">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="confirmModalMessage">Tem certeza que deseja continuar?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-close-confirm>Cancelar</button>
+                <button type="button" class="btn btn-danger btn-sm" data-confirm-action>Encerrar ponto</button>
+            </div>
+        </div>
+    </div>
+
     <footer class="footer">
         <p><strong>Bate Ponto LL</strong> &copy; {{ now().year if now is defined else '2026' }}</p>
     </footer>

@@ -33,9 +33,9 @@ from bate_ponto_bot.web.queries import (
     get_entry_events,
     get_guilds,
     get_recent_events,
-    get_user_daily_totals,
     get_user_entries,
     get_user_stats,
+    get_user_weekly_totals,
     get_users_summary,
 )
 
@@ -390,7 +390,7 @@ def create_app(settings: Settings | None = None) -> Flask:
         entries = get_user_entries(
             conn, user_id=user_id, guild_id=guild_id_param, start_date=start_dt, end_date=end_dt
         )
-        daily_totals = get_user_daily_totals(
+        weekly_totals = get_user_weekly_totals(
             conn, user_id=user_id, guild_id=guild_id_param, start_date=start_dt, end_date=end_dt
         )
 
@@ -409,7 +409,7 @@ def create_app(settings: Settings | None = None) -> Flask:
             guild=resolved_guild,
             stats=user_stats,
             entries=entries,
-            daily_totals=daily_totals,
+            weekly_totals=weekly_totals,
             active_preset=active_preset,
             start_date=start_date_str or "",
             end_date=end_date_str or "",

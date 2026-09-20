@@ -302,6 +302,45 @@ class Database:
 
             return updated
 
+    async def finish_expired_paused_entries(
+        self, pause_cutoff: datetime, ended_at: datetime | None = None
+    ) -> list[TimeEntry]:
+        """Close paused entries whose current pause started before ``pause_cutoff``."""
+        assert self.pool is not None
+        now = ended_at or utcnow()
+        async with self.pool.acquire() as conn, conn.transaction():
+            rows = await conn.fetch(
+                """
+                UPDATE time_entries
+                SET ended_at = $1,
+                    status = 'closed',
+                    pause_total_seconds = pause_total_seconds
+                        + EXTRACT(EPOCH FROM ($1 - pause_started_at))::INTEGER,
+                    pause_started_at = NULL,
+                    pause_reason = NULL,
+                    absence_started_at = NULL,
+                    absence_deadline_at = NULL,
+                    close_reason = 'pause_timeout'
+                WHERE status = 'paused'
+                  AND ended_at IS NULL
+                  AND pause_started_at IS NOT NULL
+                  AND pause_started_at <= $2
+                RETURNING *
+                """,
+                now,
+                pause_cutoff,
+            )
+            entries = [_entry_from_row(row) for row in rows]
+            for entry in entries:
+                await self._add_event(
+                    conn,
+                    entry,
+                    "pause_timeout_closed",
+                    now,
+                    {"pause_limit_seconds": 24 * 60 * 60},
+                )
+            return entries
+
     async def pause_entry(
         self, entry: TimeEntry, reason: str, pause_started_at: datetime | None = None
     ) -> TimeEntry:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from psycopg import Connection
@@ -429,14 +429,14 @@ def get_user_entries(
     return results
 
 
-def get_user_daily_totals(
+def get_user_weekly_totals(
     conn: Connection,
     user_id: int,
     guild_id: int | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
 ) -> list[dict[str, Any]]:
-    """Get worked time grouped by local calendar day for the profile chart."""
+    """Get worked time grouped by local calendar week for the profile chart."""
     where_clauses = ["user_id = %s"]
     params: list[Any] = [user_id]
 
@@ -471,9 +471,9 @@ def get_user_daily_totals(
                 ) AS net_worked_seconds
             FROM time_entries
             WHERE {" AND ".join(where_clauses)}
-        ), daily_slices AS (
+        ), weekly_slices AS (
             SELECT
-                local_day::date AS worked_date,
+                local_week::date AS week_start,
                 net_worked_seconds,
                 elapsed_seconds,
                 GREATEST(
@@ -482,25 +482,25 @@ def get_user_daily_totals(
                         EPOCH FROM (
                             LEAST(
                                 effective_end,
-                                (local_day + INTERVAL '1 day')
+                                (local_week + INTERVAL '7 days')
                                     AT TIME ZONE 'America/Fortaleza'
                             )
                             - GREATEST(
                                 started_at,
-                                local_day AT TIME ZONE 'America/Fortaleza'
+                                local_week AT TIME ZONE 'America/Fortaleza'
                             )
                         )
                     )::BIGINT
                 ) AS overlap_seconds
             FROM entry_totals
             CROSS JOIN LATERAL generate_series(
-                date_trunc('day', started_at AT TIME ZONE 'America/Fortaleza'),
-                date_trunc('day', effective_end AT TIME ZONE 'America/Fortaleza'),
-                INTERVAL '1 day'
-            ) AS generated(local_day)
+                date_trunc('week', started_at AT TIME ZONE 'America/Fortaleza'),
+                date_trunc('week', effective_end AT TIME ZONE 'America/Fortaleza'),
+                INTERVAL '1 week'
+            ) AS generated(local_week)
         )
         SELECT
-            worked_date,
+            week_start,
             ROUND(
                 SUM(
                     net_worked_seconds::NUMERIC
@@ -508,9 +508,9 @@ def get_user_daily_totals(
                     / elapsed_seconds
                 )
             )::BIGINT AS worked_seconds
-        FROM daily_slices
-        GROUP BY worked_date
-        ORDER BY worked_date ASC
+        FROM weekly_slices
+        GROUP BY week_start
+        ORDER BY week_start ASC
     """
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(query, params)
@@ -519,9 +519,12 @@ def get_user_daily_totals(
     max_seconds = max((int(row["worked_seconds"]) for row in rows), default=0)
     return [
         {
-            "date": row["worked_date"].isoformat(),
-            "date_label": row["worked_date"].strftime("%d/%m"),
-            "date_full": row["worked_date"].strftime("%d/%m/%Y"),
+            "date": row["week_start"].isoformat(),
+            "date_label": row["week_start"].strftime("%d/%m"),
+            "date_full": (
+                f"{row['week_start'].strftime('%d/%m/%Y')} a "
+                f"{(row['week_start'] + timedelta(days=6)).strftime('%d/%m/%Y')}"
+            ),
             "worked_seconds": int(row["worked_seconds"]),
             "worked_formatted": format_seconds(int(row["worked_seconds"])),
             "bar_percent": (

@@ -92,19 +92,19 @@
 
 </div>
 
-{% if daily_totals %}
+{% if weekly_totals %}
 <div class="section-card">
     <div class="section-header">
-        <h2>Horas trabalhadas por dia</h2>
+        <h2>Horas trabalhadas por semana</h2>
         <span class="chart-caption">Período selecionado</span>
     </div>
-    <div class="daily-chart" role="img" aria-label="Gráfico de horas trabalhadas por dia">
-        {% for day in daily_totals %}
-        <div class="daily-chart-item" tabindex="0" aria-label="{{ day.date_full }}: {{ day.worked_formatted }}" data-tooltip="{{ day.date_full }} • {{ day.worked_formatted }}">
-            <div class="daily-chart-track" aria-hidden="true">
-                <span class="daily-chart-bar" style="height: {{ day.bar_percent }}%;"></span>
+    <div class="weekly-chart" role="img" aria-label="Gráfico de horas trabalhadas por semana">
+        {% for week in weekly_totals %}
+        <div class="weekly-chart-item" tabindex="0" aria-label="{{ week.date_full }}: {{ week.worked_formatted }}" data-tooltip="{{ week.date_full }} • {{ week.worked_formatted }}">
+            <div class="weekly-chart-track" aria-hidden="true">
+                <span class="weekly-chart-bar" style="height: {{ week.bar_percent }}%;"></span>
             </div>
-            <time class="daily-chart-date" datetime="{{ day.date }}">{{ day.date_label }}</time>
+            <time class="weekly-chart-date" datetime="{{ week.date }}">{{ week.date_label }}</time>
         </div>
         {% endfor %}
     </div>
@@ -162,6 +162,8 @@
                         <span class="text-muted">Manual</span>
                         {% elif entry.close_reason == 'admin_dashboard' %}
                         <span class="text-muted">Encerrado pelo painel</span>
+                        {% elif entry.close_reason == 'pause_timeout' %}
+                        <span class="text-danger">Pausa excedeu 24 horas</span>
                         {% elif entry.close_reason %}
                         <span class="text-muted">{{ entry.close_reason }}</span>
                         {% elif not entry.ended_at %}

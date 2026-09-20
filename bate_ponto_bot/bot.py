@@ -61,9 +61,11 @@ class TimeClockBot(commands.Bot):
         self.dev_guild_id = dev_guild_id
         self.absence_tasks: dict[int, asyncio.Task[None]] = {}
         self.cleanup_tasks: set[asyncio.Task[None]] = set()
+        self.pause_expiration_task: asyncio.Task[None] | None = None
 
     async def setup_hook(self) -> None:
         await self.db.connect()
+        self._start_pause_expiration_job()
         self.add_view(TimeClockView(self))
         self.tree.add_command(ConfigGroup(self))
 
@@ -81,6 +83,8 @@ class TimeClockBot(commands.Bot):
             task.cancel()
         for task in self.cleanup_tasks:
             task.cancel()
+        if self.pause_expiration_task:
+            self.pause_expiration_task.cancel()
         await self.db.close()
         await super().close()
 
@@ -145,6 +149,57 @@ class TimeClockBot(commands.Bot):
         task = asyncio.create_task(self._delete_control_message_after(message, delay))
         self.cleanup_tasks.add(task)
         task.add_done_callback(self.cleanup_tasks.discard)
+
+    def _start_pause_expiration_job(self) -> None:
+        if self.pause_expiration_task and not self.pause_expiration_task.done():
+            return
+        self.pause_expiration_task = asyncio.create_task(self._pause_expiration_loop())
+
+    async def _pause_expiration_loop(self) -> None:
+        while True:
+            try:
+                cutoff = utcnow() - timedelta(hours=24)
+                entries = await self.db.finish_expired_paused_entries(cutoff)
+                for entry in entries:
+                    self.log_interaction(
+                        "pause_timeout",
+                        "auto_closed",
+                        guild_id=entry.guild_id,
+                        user_id=entry.user_id,
+                        entry_id=entry.id,
+                    )
+                    guild = self.get_guild(entry.guild_id)
+                    member = guild.get_member(entry.user_id) if guild else None
+                    if guild:
+                        await self.delete_point_status_message(guild, entry.id)
+                    if member:
+                        try:
+                            await self.notify_member(
+                                member,
+                                "Ponto encerrado automaticamente",
+                                "Seu ponto foi encerrado após 24 horas em pausa.",
+                                color=discord.Color.orange(),
+                                fields=[
+                                    ("Status", "Encerrado", True),
+                                    ("Fim", format_dt(entry.ended_at), True),
+                                    (
+                                        "Tempo trabalhado",
+                                        format_seconds(worked_seconds(entry)),
+                                        True,
+                                    ),
+                                ],
+                            )
+                        except discord.HTTPException:
+                            LOGGER.warning(
+                                "Não foi possível notificar o usuário %s sobre o ponto %s.",
+                                entry.user_id,
+                                entry.id,
+                            )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                LOGGER.exception("Falha no job de encerramento de pausas expiradas.")
+            await asyncio.sleep(60)
 
     async def _delete_control_message_after(self, message: discord.Message, delay: int) -> None:
         await asyncio.sleep(delay)

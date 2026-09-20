@@ -12,6 +12,7 @@ Bot de bate-ponto para Discord com PostgreSQL.
 - Canal de auditoria para logs.
 - Início e retomada permitidos apenas em canais de voz configurados.
 - Tolerância de ausência ajustável. Ao exceder a tolerância, o ponto é encerrado automaticamente.
+- Pontos mantidos em pausa por 24 horas são encerrados automaticamente por um job periódico.
 - Histórico persistido em PostgreSQL.
 - **Dashboard Web em Flask**:
   - Métricas gerais (total de horas trabalhadas, tempo em pausa, média por turno, ausências automáticas).
