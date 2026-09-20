@@ -214,7 +214,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     const title = eventTypeNames[ev.event_type] || `Evento: ${ev.event_type}`;
                     let metaInfo = "";
                     if (ev.metadata && Object.keys(ev.metadata).length > 0) {
-                        metaInfo = `<div style="color: var(--text-dim); font-size: 0.75rem; margin-top: 0.25rem;">${escapeHtml(JSON.stringify(ev.metadata))}</div>`;
+                        metaInfo = `<div class="timeline-meta">${escapeHtml(JSON.stringify(ev.metadata))}</div>`;
                     }
                     html += `
                         <div class="timeline-item">
