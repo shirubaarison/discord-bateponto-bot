@@ -85,6 +85,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const editForm = document.getElementById("editEntryForm");
     const editStartedAt = document.getElementById("editStartedAt");
     const editEndedAt = document.getElementById("editEndedAt");
+    const editWorkedDuration = document.getElementById("editWorkedDuration");
 
     const closeEditModal = () => {
         if (editModal) editModal.classList.remove("show");
@@ -96,11 +97,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.querySelectorAll("[data-edit-entry]").forEach(btn => {
         btn.addEventListener("click", () => {
-            if (!editModal || !editForm || !editStartedAt || !editEndedAt) return;
+            if (!editModal || !editForm || !editStartedAt || !editEndedAt || !editWorkedDuration) return;
             const entryId = btn.getAttribute("data-edit-entry");
             editForm.action = `/entries/${entryId}/edit`;
             editStartedAt.value = btn.getAttribute("data-started-at") || "";
             editEndedAt.value = btn.getAttribute("data-ended-at") || "";
+            editWorkedDuration.value = btn.getAttribute("data-worked-duration") || "";
             editEndedAt.min = editStartedAt.value;
             editModal.classList.add("show");
             editStartedAt.focus();

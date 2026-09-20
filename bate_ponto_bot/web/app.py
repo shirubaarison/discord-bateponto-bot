@@ -114,6 +114,16 @@ def parse_datetime_local_input(value: str) -> datetime:
     return parsed.replace(tzinfo=LOCAL_TIMEZONE).astimezone(UTC)
 
 
+def parse_duration_input(value: str) -> int:
+    parts = value.strip().split(":")
+    if len(parts) != 3:
+        raise ValueError("duration must be HH:MM:SS")
+    hours, minutes, seconds = (int(part) for part in parts)
+    if hours < 0 or not 0 <= minutes <= 59 or not 0 <= seconds <= 59:
+        raise ValueError("invalid duration")
+    return hours * 3600 + minutes * 60 + seconds
+
+
 def get_db() -> psycopg.Connection:
     """Get or create the request-scoped database connection."""
     if "db" not in g:
@@ -332,11 +342,14 @@ def create_app(settings: Settings | None = None) -> Flask:
         try:
             started_at = parse_datetime_local_input(request.form.get("started_at", ""))
             ended_at = parse_datetime_local_input(request.form.get("ended_at", ""))
+            worked_seconds = parse_duration_input(request.form.get("worked_duration", ""))
         except ValueError:
-            return "Informe datas válidas para início e fim.", 400
+            return "Informe início, fim e tempo trabalhado válidos.", 400
 
         if ended_at <= started_at:
             return "O fim deve ser posterior ao início.", 400
+        if worked_seconds > int((ended_at - started_at).total_seconds()):
+            return "O tempo trabalhado não pode exceder o intervalo entre início e fim.", 400
 
         conn = get_db()
         entry = edit_entry_times(
@@ -345,6 +358,7 @@ def create_app(settings: Settings | None = None) -> Flask:
             started_at=started_at,
             ended_at=ended_at,
             editor_username=dashboard_username,
+            worked_seconds=worked_seconds,
         )
         if entry is None:
             return "Somente pontos finalizados podem ser editados.", 409

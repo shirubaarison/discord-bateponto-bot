@@ -722,6 +722,7 @@ def edit_entry_times(
     started_at: datetime,
     ended_at: datetime,
     editor_username: str,
+    worked_seconds: int | None = None,
 ) -> dict[str, Any] | None:
     """Update a closed entry's timestamps and persist an immutable audit record."""
     edited_at = utcnow()
@@ -734,17 +735,25 @@ def edit_entry_times(
         if old_entry is None or old_entry["ended_at"] is None:
             return None
 
+        new_pause_total_seconds = int(old_entry["pause_total_seconds"])
+        if worked_seconds is not None:
+            elapsed_seconds = int((ended_at - started_at).total_seconds())
+            new_pause_total_seconds = elapsed_seconds - worked_seconds
+            if new_pause_total_seconds < 0:
+                raise ValueError("worked_seconds cannot exceed elapsed time")
+
         cur.execute(
             """
             UPDATE time_entries
             SET started_at = %s,
                 ended_at = %s,
+                pause_total_seconds = %s,
                 status = 'closed',
                 close_reason = 'admin_adjustment'
             WHERE id = %s
             RETURNING *
             """,
-            (started_at, ended_at, entry_id),
+            (started_at, ended_at, new_pause_total_seconds, entry_id),
         )
         updated_entry = cur.fetchone()
         assert updated_entry is not None

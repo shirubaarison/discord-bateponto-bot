@@ -182,7 +182,7 @@
                                 <i data-lucide="history"></i> Timeline
                             </button>
                             {% if entry.ended_at %}
-                            <button type="button" class="btn btn-secondary btn-sm" data-edit-entry="{{ entry.id }}" data-started-at="{{ entry.started_at_input }}" data-ended-at="{{ entry.ended_at_input }}" title="Editar horários">
+                            <button type="button" class="btn btn-secondary btn-sm" data-edit-entry="{{ entry.id }}" data-started-at="{{ entry.started_at_input }}" data-ended-at="{{ entry.ended_at_input }}" data-worked-duration="{{ entry.worked_formatted }}" title="Editar horários">
                                 <i data-lucide="pencil"></i> Editar
                             </button>
                             {% endif %}
