@@ -24,8 +24,9 @@
         </button>
         <ul class="nav-links" id="main-navigation">
             <li class="mobile-menu-header">
-                <span>Menu</span>
-                <button type="button" class="mobile-menu-close" data-mobile-menu-close aria-label="Fechar menu">&times;</button>
+                <button type="button" class="mobile-menu-close" data-mobile-menu-close aria-label="Fechar menu">
+                    <i data-lucide="x"></i>
+                </button>
             </li>
             <li><a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">Visão geral</a></li>
             <li><a href="{{ url_for('events_page') }}" class="nav-link {% if request.endpoint == 'events_page' %}active{% endif %}">Auditoria</a></li>
