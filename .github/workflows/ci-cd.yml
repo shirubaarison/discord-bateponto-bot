@@ -36,7 +36,7 @@ jobs:
         run: uv sync --frozen --all-groups
 
       - name: Run lint
-        run: uv run ruff check bate_ponto_bot tests
+        run: uv run ruff check .
 
       - name: Run tests
         run: uv run pytest -q
@@ -55,7 +55,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, production]
     environment:
       name: production
-      url: https://www.maskeneulen.works
+      url: ${{ vars.PRODUCTION_URL }}
     concurrency:
       group: production-deploy
       cancel-in-progress: false
@@ -66,7 +66,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd /home/alyssonsilva40709/bot
+          cd "${{ vars.DEPLOY_PATH }}"
           git fetch origin main
           git checkout main
           git pull --ff-only origin main
@@ -81,6 +81,6 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          cd /home/alyssonsilva40709/bot
+          cd "${{ vars.DEPLOY_PATH }}"
           docker compose ps
           docker compose logs --tail=100 bot dashboard
