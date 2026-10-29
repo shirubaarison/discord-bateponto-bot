@@ -200,13 +200,13 @@ def test_flask_app_routes() -> None:
         patch(
             "bate_ponto_bot.web.app.resolve_discord_guilds",
             return_value={
-                111: {"guild_id": 111, "name": "Bate-Ponto"},
+                111: {"guild_id": 111, "name": "Meu Servidor"},
                 333: {"guild_id": 333, "name": "Outro servidor"},
             },
         ),
         patch(
             "bate_ponto_bot.web.app.resolve_discord_guild",
-            return_value={"guild_id": 111, "name": "Bate-Ponto"},
+            return_value={"guild_id": 111, "name": "Meu Servidor"},
         ),
     ):
         mock_conn = MagicMock()
@@ -232,7 +232,7 @@ def test_flask_app_routes() -> None:
         assert "Horário de Fortaleza" not in res.text
         assert "Todos os Servidores" not in res.text
         assert '<option value="111" selected>' in res.text
-        assert "Bate-Ponto" in res.text
+        assert "Meu Servidor" in res.text
         assert "brand-mark" in res.text
         assert b"Colaboradores" in res.data
         assert '<div class="stat-value">2h</div>' in res.text

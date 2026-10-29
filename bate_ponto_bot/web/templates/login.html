@@ -4,14 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title>Entrar | Bate Ponto LL</title>
+    <title>Entrar | Bate-Ponto</title>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-    <link rel="icon" href="https://bate-ponto.com.br/wp-content/uploads/2025/02/cropped-cropped-bate-pontologo-32x32-1-32x32.png" sizes="32x32">
-    <link rel="apple-touch-icon" href="https://bate-ponto.com.br/wp-content/uploads/2025/02/cropped-cropped-bate-pontologo-32x32-1-180x180.png">
+    <link rel="icon" href="{{ url_for('static', filename='img/logo.svg') }}" type="image/svg+xml">
 </head>
 <body class="login-page">
     <button type="button" class="theme-toggle login-theme-toggle" data-theme-toggle aria-label="Ativar tema escuro" title="Ativar tema escuro">
@@ -21,8 +20,8 @@
     <main class="login-shell">
         <section class="login-card" aria-labelledby="login-title">
             <div class="login-brand">
-                <img src="https://bate-ponto.com.br/wp-content/uploads/2025/02/cropped-cropped-bate-pontologo-32x32-1-192x192.png" alt="" class="login-brand-mark" width="36" height="36">
-                <span>Bate Ponto LL</span>
+                <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" class="login-brand-mark" width="36" height="36">
+                <span>Bate-Ponto</span>
             </div>
             <h1 id="login-title">Acesse o painel</h1>
             <p>Entre com suas credenciais de administração.</p>

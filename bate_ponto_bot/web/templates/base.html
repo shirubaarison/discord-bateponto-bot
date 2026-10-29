@@ -9,15 +9,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-    <link rel="icon" href="https://bate-ponto.com.br/wp-content/uploads/2025/02/cropped-cropped-bate-pontologo-32x32-1-32x32.png" sizes="32x32">
-    <link rel="icon" href="https://bate-ponto.com.br/wp-content/uploads/2025/02/cropped-cropped-bate-pontologo-32x32-1-192x192.png" sizes="192x192">
-    <link rel="apple-touch-icon" href="https://bate-ponto.com.br/wp-content/uploads/2025/02/cropped-cropped-bate-pontologo-32x32-1-180x180.png">
+    <link rel="icon" href="{{ url_for('static', filename='img/logo.svg') }}" type="image/svg+xml">
 </head>
 <body>
     <nav class="navbar">
         <a href="{{ url_for('index') }}" class="nav-brand">
-            <img src="https://bate-ponto.com.br/wp-content/uploads/2025/02/cropped-cropped-bate-pontologo-32x32-1-192x192.png" alt="" class="brand-mark" width="36" height="36">
-            <span class="brand-copy"><strong>Bate Ponto LL</strong></span>
+            <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" class="brand-mark" width="36" height="36">
+            <span class="brand-copy"><strong>Bate-Ponto</strong></span>
         </a>
         <button type="button" class="mobile-menu-toggle" data-mobile-menu-toggle aria-expanded="false" aria-controls="main-navigation" aria-label="Abrir menu">
             <i data-lucide="menu"></i>
@@ -119,7 +117,7 @@
     </div>
 
     <footer class="footer">
-        <p><strong>Bate Ponto LL</strong> &copy; {{ now().year if now is defined else '2026' }}</p>
+        <p><strong>Bate-Ponto</strong> &copy; {{ now().year if now is defined else '2026' }}</p>
     </footer>
 
     <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
