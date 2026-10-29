@@ -1,198 +1,140 @@
-# Bate-ponto Discord
+# Bate-Ponto Discord
 
-Bot de bate-ponto para Discord com PostgreSQL.
+Controle de ponto direto no Discord, com painel web para acompanhar as horas da equipe.
 
-## Recursos
+Python 3.11+ · discord.py · PostgreSQL · Flask · Docker Compose
 
-- Painel com botões para iniciar, finalizar, pausar/retomar, ver status e histórico.
-- Resumo individual com primeiro e último ponto, total acumulado e horas por semana.
-- Status individual pelo botão `Status`.
-- Aviso privado quando a pessoa sai e volta ao canal de voz permitido.
-- Configuração por servidor via comandos slash.
-- Canal de auditoria para logs.
+## O que faz
+
+**Bot**
+
+- Painel com botões para iniciar, finalizar, pausar/retomar, ver status e histórico (respostas privadas).
 - Início e retomada permitidos apenas em canais de voz configurados.
-- Tolerância de ausência ajustável. Ao exceder a tolerância, o ponto é encerrado automaticamente.
-- Pontos ativos ou mantidos em pausa por 24 horas são encerrados automaticamente por um job periódico.
-- Histórico persistido em PostgreSQL.
-- **Dashboard Web em Flask**:
-  - Métricas gerais (total de horas trabalhadas, tempo em pausa, média por turno, ausências automáticas).
-  - Visualização ao vivo de colaboradores trabalhando no momento.
-  - Tabela completa de desempenho por colaborador com filtros de data (Hoje, 7 dias, Este Mês, Customizado).
-  - Página individual de histórico e timeline de eventos por ponto.
-  - Exportação de dados para CSV com compatibilidade para Excel (UTF-8 BOM).
+- Tolerância de ausência ajustável: se a pessoa sai do canal de voz e não volta a tempo, o ponto é encerrado no horário limite e ela recebe um aviso por DM.
+- Pontos ativos ou em pausa por mais de 24 horas são encerrados automaticamente.
+- Canal de auditoria para logs e configuração por servidor via comandos slash.
 
-## Requisitos
+**Dashboard web**
 
-- Python 3.11+
-- PostgreSQL ou Docker
-- Um aplicativo/bot no Discord Developer Portal com token.
+- Métricas gerais, colaboradores trabalhando agora e desempenho por pessoa, com filtros de período.
+- Histórico individual e linha do tempo de eventos de cada ponto.
+- Exportação para CSV compatível com Excel (UTF-8 BOM).
+- Login com senha em hash, proteção CSRF, limite de tentativas e cabeçalhos de segurança.
 
-O bot usa eventos de servidor e canais de voz. Nenhum privileged intent é necessário para o MVP.
+## Início rápido (Docker)
 
-Permissões mínimas do bot nos canais configurados:
+```bash
+git clone <url-do-repositorio> && cd bate-ponto-discord
+make env        # cria o .env
+make secret     # copie o resultado para DASHBOARD_SECRET_KEY
+make hash       # copie a linha gerada para o .env
+# edite o .env: DISCORD_TOKEN, POSTGRES_PASSWORD, DASHBOARD_USERNAME
+make up         # sobe banco, migrações, bot e dashboard
+```
 
-- Canal do painel: `View Channel`, `Send Messages` e `Manage Messages`.
-- Canal de logs: `View Channel` e `Send Messages`.
-- Canais de voz permitidos: `View Channel`.
+O dashboard fica em `http://127.0.0.1:5000`. Em produção, coloque-o atrás de um proxy reverso com
+HTTPS; sem HTTPS, defina `DASHBOARD_SECURE_COOKIES=false` (apenas para testes locais).
+
+> `make hash` usa `uv`. Sem ele, gere o hash com
+> `python -c 'from getpass import getpass; from werkzeug.security import generate_password_hash as g; print(g(getpass()))'`
+> e mantenha aspas simples ao redor do valor no `.env` por causa dos `$`.
+
+### Criando o bot no Discord
+
+1. Em [Discord Developer Portal](https://discord.com/developers/applications), crie uma aplicação e adicione um Bot.
+2. Copie o token para `DISCORD_TOKEN`. Nenhum privileged intent é necessário.
+3. Convide o bot com os escopos `bot` e `applications.commands`.
+4. Permissões mínimas:
+   - Canal do painel: `View Channel`, `Send Messages`, `Manage Messages`.
+   - Canal de logs: `View Channel`, `Send Messages`.
+   - Canais de voz permitidos: `View Channel`.
+
+### Configurando no servidor
+
+Todos os comandos exigem a permissão `Manage Server`.
+
+| Comando | Efeito |
+| --- | --- |
+| `/config painel canal:#canal` | Publica o painel de bate-ponto |
+| `/config logs canal:#canal` | Define o canal de auditoria |
+| `/config voz-adicionar canal:Canal` | Permite ponto nesse canal de voz |
+| `/config voz-remover canal:Canal` | Remove o canal de voz permitido |
+| `/config tolerancia minutos:5` | Ajusta a tolerância de ausência |
+| `/config limpeza segundos:30` | Apaga mensagens comuns do painel após esse tempo (`0` desativa) |
+| `/config mostrar` | Mostra a configuração atual |
+
+## Desenvolvimento local
+
+Requer [uv](https://docs.astral.sh/uv/) e Docker (para o PostgreSQL).
+
+```bash
+make install
+make env            # e ajuste o .env: POSTGRES_HOST=localhost
+make db             # PostgreSQL via Docker
+make migrate
+make bot            # em um terminal
+make dashboard      # em outro (http://localhost:5000)
+```
+
+Use `DEV_GUILD_ID` para sincronizar os comandos slash só no seu servidor de testes.
+`make help` lista todos os alvos.
+
+| Alvo | Descrição |
+| --- | --- |
+| `make check` | Lint + testes (o mesmo que a CI) |
+| `make test` | Testes (`pytest`) |
+| `make lint` / `make format` | Ruff |
+| `make logs` | Logs dos containers |
+| `make down` | Para os containers |
 
 ## Configuração
 
-Copie `.env.example` para `.env` e preencha:
+Toda a configuração vem de variáveis de ambiente (arquivo `.env`), validadas com Pydantic na
+inicialização. O [`.env.example`](.env.example) documenta cada uma.
 
-```env
-DISCORD_TOKEN=...
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bate_ponto
+| Variável | Descrição |
+| --- | --- |
+| `DISCORD_TOKEN` | Token do bot (obrigatório) |
+| `POSTGRES_*` / `DATABASE_URL` | Conexão com o banco. `POSTGRES_HOST` tem prioridade sobre `DATABASE_URL` |
+| `DASHBOARD_SECRET_KEY` | Chave de sessão, com 32+ caracteres (obrigatória) |
+| `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD_HASH` | Credenciais do dashboard (obrigatórias) |
+| `DASHBOARD_SECURE_COOKIES` | `true` exige HTTPS |
+| `DASHBOARD_PROXY_FIX` | `true` quando atrás de proxy reverso |
+| `DEV_GUILD_ID` | Sincroniza comandos slash em um único servidor |
+
+O dashboard recusa iniciar sem usuário, hash de senha e uma chave de sessão segura.
+
+## Estrutura
+
 ```
-
-Durante desenvolvimento, use `DEV_GUILD_ID` para sincronizar comandos slash somente em um servidor:
-
-```env
-DEV_GUILD_ID=123456789012345678
-```
-
-## Executar
-
-Suba o PostgreSQL local:
-
-```bash
-docker compose up -d postgres
-```
-
-Rode as migrações:
-
-```bash
-uv run alembic upgrade head
-```
-
-Depois rode o bot:
-
-```bash
-uv run bate-ponto-bot
-```
-
-Para rodar o Dashboard Web em Flask:
-
-```bash
-uv run bate-ponto-dashboard
-```
-
-O dashboard estará disponível em `http://localhost:5000`.
-
-### Login do dashboard
-
-O dashboard não inicia sem usuário, hash de senha e uma chave de sessão segura. Gere a chave:
-
-```bash
-openssl rand -hex 32
-```
-
-Gere o hash da senha sem deixá-la no histórico do terminal:
-
-```bash
-docker compose run --rm dashboard python -c 'from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass("Senha: ")))'
-```
-
-Adicione os valores ao `.env`. Mantenha aspas simples ao redor do hash para preservar os caracteres
-`$`:
-
-```env
-DASHBOARD_SECRET_KEY=resultado_do_openssl
-DASHBOARD_USERNAME=admin
-DASHBOARD_PASSWORD_HASH='resultado_do_comando_de_hash'
-DASHBOARD_SECURE_COOKIES=true
-```
-
-`DASHBOARD_SECURE_COOKIES=true` exige acesso por HTTPS. Use `false` somente no desenvolvimento
-local por HTTP. O `.env` não deve ser commitado.
-
-Para rodar tudo junto via Docker Compose:
-
-```bash
-docker compose up -d
-```
-
-As variáveis de ambiente são validadas com Pydantic na inicialização.
-
-Para parar o banco e containers:
-
-```bash
-docker compose down
-```
-
-## Qualidade
-
-O projeto usa Ruff para lint e formatação:
-
-```bash
-uv run ruff check .
-uv run ruff format .
-```
-
-Rode os testes com:
-
-```bash
-uv run pytest
-```
-
-Para apenas verificar formatação sem alterar arquivos:
-
-```bash
-uv run ruff format --check .
+bate_ponto_bot/
+├── bot.py, commands.py, views.py   # bot, comandos slash e botões
+├── db.py, models.py                # acesso ao PostgreSQL (asyncpg)
+└── web/                            # dashboard Flask (app, queries, CSV, templates)
+migrations/                         # Alembic
+tests/                              # pytest
+scripts/hash_password.py            # gerador do hash de senha
 ```
 
 ## CI/CD
 
-Todo pull request e push para `main` executa lint, testes e validação do Docker Compose no GitHub
-Actions. Um push aprovado em `main` também pode fazer deploy automático na GCP por meio de um
-runner auto-hospedado, instalado na própria VM. Assim, o GitHub não precisa guardar uma chave SSH,
-nem o servidor precisa expor uma porta SSH à internet.
+Pull requests e pushes em `main` rodam lint, testes e validação do Docker Compose. Um push em
+`main` pode também fazer deploy por um runner auto-hospedado instalado na VM, sem guardar chave
+SSH no GitHub nem expor porta SSH.
 
-No GitHub, crie o ambiente `production` em **Settings → Environments** e configure um revisor
-obrigatório antes do primeiro deploy. Proteja também a branch `main`, exigindo o check
-`Tests and quality` antes de aceitar alterações.
+1. Crie o ambiente `production` em **Settings → Environments**, com revisor obrigatório, e proteja a `main` exigindo o check `Tests and quality`.
+2. Em **Settings → Secrets and variables → Actions → Variables**, defina:
+   - `DEPLOY_PATH`: diretório do projeto na VM (por exemplo `/opt/bate-ponto`);
+   - `PRODUCTION_URL`: URL pública do dashboard.
+3. Na VM, registre o runner com o label `production` (**Settings → Actions → Runners → New self-hosted runner**) e instale-o como serviço (`sudo ./svc.sh install && sudo ./svc.sh start`).
+4. Mantenha o `.env` de produção apenas na VM, dentro de `DEPLOY_PATH`; a pipeline nunca o cria nem o altera.
 
-Na VM, crie o runner fora do repositório e use o comando de cadastro temporário exibido em
-**Settings → Actions → Runners → New self-hosted runner → Linux x64**:
-
-```bash
-mkdir -p /home/USUARIO_DA_VM/actions-runner
-cd /home/USUARIO_DA_VM/actions-runner
-# baixe e extraia o pacote indicado pelo GitHub nesta pasta
-./config.sh --url https://github.com/SEU_USUARIO/SEU_REPOSITORIO --token SEU_TOKEN --labels production
-sudo ./svc.sh install USUARIO_DA_VM
-sudo ./svc.sh start
-sudo ./svc.sh status
-```
-
-O token de cadastro expira rapidamente e não deve ser salvo. O arquivo `.env` de produção continua
-somente no diretório de produção da VM (por exemplo, `/opt/bate-ponto/.env`); a pipeline não o cria nem o substitui. Depois que o
-runner aparecer como **Idle** no GitHub, cada push em `main` passa pela aprovação do ambiente e
-executa migrações, atualização dos containers e a verificação de saúde do dashboard.
-
-## Comandos
-
-Todos os comandos de configuração exigem permissão `Manage Server`.
-
-- `/config painel canal:#canal`: publica o painel de bate-ponto.
-- `/config logs canal:#canal`: define o canal de auditoria.
-- `/config voz-adicionar canal:CanalDeVoz`: permite ponto nesse canal de voz.
-- `/config voz-remover canal:CanalDeVoz`: remove o canal de voz permitido.
-- `/config tolerancia minutos:5`: ajusta a tolerância de ausência.
-- `/config limpeza segundos:30`: apaga mensagens comuns do canal do painel após esse tempo.
-- `/config mostrar`: mostra a configuração atual.
-
-Use `/config limpeza segundos:0` para desativar a limpeza automática. A mensagem fixa do painel
-não é apagada.
-
-Os botões respondem de forma privada para quem clicou. O botão `Histórico` mostra os últimos pontos
-finalizados com início, fim, total de cada registro e o total somado da lista exibida.
-
-As mensagens automáticas de ausência são enviadas por DM para a pessoa afetada. O Discord só permite
-mensagens privadas dentro do canal quando elas são respostas efêmeras a comandos ou botões.
+O deploy executa build, migrações, atualização dos containers e verifica `/healthz`.
 
 ## Regra de ausência
 
-Quando uma pessoa com ponto ativo sai de um canal de voz permitido, o bot inicia a tolerância
-configurada. Se ela voltar antes do prazo, o ponto continua ativo. Se exceder o prazo, o ponto é
-encerrado automaticamente no horário limite da tolerância. Se ela voltar depois do encerramento,
-o bot avisa a pessoa por DM que um novo ponto precisa ser iniciado.
+Quando alguém com ponto ativo sai de um canal de voz permitido, começa a tolerância configurada.
+Se voltar a tempo, o ponto continua. Se não, ele é encerrado no horário limite da tolerância; ao
+voltar depois disso, a pessoa recebe uma DM avisando que precisa iniciar um novo ponto. (O Discord
+só permite mensagens privadas no canal como respostas efêmeras a comandos ou botões, por isso os
+avisos automáticos vão por DM.)
