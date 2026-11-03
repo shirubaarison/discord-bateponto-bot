@@ -51,8 +51,44 @@ LOGGER = logging.getLogger(__name__)
 INTERACTION_LOGGER = logging.getLogger("bate_ponto_bot.interactions")
 
 
+def pick_welcome_channel(guild: discord.Guild) -> discord.TextChannel | None:
+    """The system channel if the bot can write there, else the first text channel it can."""
+    candidates = [guild.system_channel, *sorted(guild.text_channels, key=lambda c: c.position)]
+    for channel in candidates:
+        if channel is None:
+            continue
+        permissions = channel.permissions_for(guild.me)
+        if permissions.view_channel and permissions.send_messages:
+            return channel
+    return None
+
+
+def build_welcome_embed(dashboard_url: str | None = None) -> discord.Embed:
+    description = (
+        "Configure em 3 passos (requer a permissão **Gerenciar Servidor**):\n"
+        "1. `/config painel` — canal onde fica o painel de ponto\n"
+        "2. `/config voz-adicionar` — canais de voz em que o ponto vale\n"
+        "3. `/config fuso` — fuso horário do servidor (padrão: America/Fortaleza)\n\n"
+        "Opcional: `/config logs` para o canal de auditoria."
+    )
+    if dashboard_url:
+        description += f"\n\nAcompanhe as horas da equipe em {dashboard_url}"
+    embed = discord.Embed(
+        title="Obrigado por adicionar o Bate-Ponto!",
+        description=description,
+        color=discord.Color.blurple(),
+    )
+    embed.set_footer(text="Bate-ponto")
+    return embed
+
+
 class TimeClockBot(commands.Bot):
-    def __init__(self, database: Database, dev_guild_id: int | None = None) -> None:
+    def __init__(
+        self,
+        database: Database,
+        dev_guild_id: int | None = None,
+        dashboard_url: str | None = None,
+    ) -> None:
         intents = discord.Intents.default()
         intents.guilds = True
         intents.messages = True
@@ -61,6 +97,7 @@ class TimeClockBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
         self.db = database
         self.dev_guild_id = dev_guild_id
+        self.dashboard_url = dashboard_url
         self.absence_tasks: dict[int, asyncio.Task[None]] = {}
         self.cleanup_tasks: set[asyncio.Task[None]] = set()
         self.pause_expiration_task: asyncio.Task[None] | None = None
@@ -104,6 +141,17 @@ class TimeClockBot(commands.Bot):
         LOGGER.info("Bot conectado como %s (%s).", self.user, self.user.id)
         await self._restore_absence_checks()
         await self._refresh_control_panels()
+
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        LOGGER.info("Bot adicionado ao servidor %s (%s).", guild.name, guild.id)
+        channel = pick_welcome_channel(guild)
+        if channel is None:
+            LOGGER.info("Nenhum canal disponível para a mensagem de boas-vindas em %s.", guild.id)
+            return
+        try:
+            await channel.send(embed=build_welcome_embed(self.dashboard_url))
+        except discord.HTTPException:
+            LOGGER.warning("Falha ao enviar boas-vindas no canal %s.", channel.id)
 
     async def _refresh_control_panels(self) -> None:
         """Refresh existing panel messages so newly deployed buttons become visible."""
@@ -854,7 +902,11 @@ def main() -> None:
         level=log_level,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    bot = TimeClockBot(Database(settings.resolved_database_url), dev_guild_id=settings.dev_guild_id)
+    bot = TimeClockBot(
+        Database(settings.resolved_database_url),
+        dev_guild_id=settings.dev_guild_id,
+        dashboard_url=settings.dashboard_url,
+    )
     bot.run(settings.discord_token)
 
 

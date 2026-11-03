@@ -77,3 +77,39 @@ def test_get_user_time_info_maps_database_row() -> None:
         worked_seconds=466_615,
         shifts_count=42,
     )
+
+
+def test_welcome_embed_lists_setup_commands_and_dashboard() -> None:
+    from bate_ponto_bot.bot import build_welcome_embed
+
+    without_url = build_welcome_embed().description or ""
+    assert "/config painel" in without_url
+    assert "/config voz-adicionar" in without_url
+    assert "/config fuso" in without_url
+    assert "http" not in without_url
+
+    assert "https://ponto.example.com" in (
+        build_welcome_embed("https://ponto.example.com").description or ""
+    )
+
+
+def test_pick_welcome_channel_prefers_writable_system_channel() -> None:
+    from bate_ponto_bot.bot import pick_welcome_channel
+
+    def channel(position: int, *, can_send: bool) -> MagicMock:
+        mock = MagicMock(position=position)
+        mock.permissions_for.return_value = MagicMock(view_channel=True, send_messages=can_send)
+        return mock
+
+    locked_system = channel(0, can_send=False)
+    first, second = channel(2, can_send=True), channel(1, can_send=True)
+    guild = MagicMock(system_channel=locked_system, text_channels=[first, second])
+    assert pick_welcome_channel(guild) is second
+
+    open_system = channel(5, can_send=True)
+    guild.system_channel = open_system
+    assert pick_welcome_channel(guild) is open_system
+
+    guild.system_channel = None
+    guild.text_channels = [channel(0, can_send=False)]
+    assert pick_welcome_channel(guild) is None

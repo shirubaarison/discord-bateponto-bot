@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     discord_client_id: int | None = Field(default=None, gt=0)
     discord_client_secret: str | None = None
     discord_redirect_uri: str | None = None
+    # Public dashboard address, linked in the bot's welcome message.
+    dashboard_url: str | None = None
 
     @property
     def resolved_database_url(self) -> str:
