@@ -32,6 +32,11 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // Reload as soon as a different server is picked (inline onchange is blocked by the CSP)
+    document.querySelectorAll("select[data-auto-submit]").forEach(select => {
+        select.addEventListener("change", () => select.form?.requestSubmit());
+    });
+
     const escapeHtml = (value) => String(value)
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")

@@ -20,7 +20,7 @@
     <form method="GET" action="{{ url_for('events_page') }}" class="filter-form">
         <div class="form-group">
             <label for="guild_id">Servidor:</label>
-            <select name="guild_id" id="guild_id" class="input-control" onchange="this.form.submit()">
+            <select name="guild_id" id="guild_id" class="input-control" data-auto-submit>
                 {% for g in guilds %}
                 {% set guild_info = resolved_guilds.get(g.guild_id, {}) %}
                 <option value="{{ g.guild_id }}" {% if selected_guild_id == g.guild_id %}selected{% endif %}>

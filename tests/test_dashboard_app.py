@@ -232,6 +232,9 @@ def test_flask_app_routes() -> None:
         assert "Horário de Fortaleza" not in res.text
         assert "Todos os Servidores" not in res.text
         assert '<option value="111" selected>' in res.text
+        # Inline handlers are blocked by the CSP; the selector reloads via dashboard.js.
+        assert "data-auto-submit" in res.text
+        assert "onchange=" not in res.text
         assert "Meu Servidor" in res.text
         assert "brand-mark" in res.text
         assert b"Colaboradores" in res.data
