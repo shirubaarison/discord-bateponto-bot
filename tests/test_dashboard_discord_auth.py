@@ -29,7 +29,7 @@ def discord_settings(**overrides: object) -> Settings:
         "discord_redirect_uri": "http://localhost/auth/discord/callback",
     }
     values.update(overrides)
-    return Settings(**values)
+    return Settings(_env_file=None, **values)  # type: ignore[call-arg]
 
 
 def make_app(**overrides: object) -> Flask:

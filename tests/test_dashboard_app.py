@@ -28,7 +28,7 @@ def dashboard_settings(**overrides: object) -> Settings:
         "dashboard_proxy_fix": False,
     }
     values.update(overrides)
-    return Settings(**values)
+    return Settings(_env_file=None, **values)  # type: ignore[call-arg]
 
 
 def login(
@@ -344,6 +344,7 @@ def test_dashboard_login_rate_limit_and_safe_redirect() -> None:
 
 def test_dashboard_rejects_insecure_auth_configuration() -> None:
     settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
         discord_token="fake_token",
         database_url="postgresql://user:pass@localhost:5432/db",
         postgres_host=None,
