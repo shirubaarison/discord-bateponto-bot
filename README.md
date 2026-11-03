@@ -199,3 +199,7 @@ Se voltar a tempo, o ponto continua. Se não, ele é encerrado no horário limit
 voltar depois disso, a pessoa recebe uma DM avisando que precisa iniciar um novo ponto. (O Discord
 só permite mensagens privadas no canal como respostas efêmeras a comandos ou botões, por isso os
 avisos automáticos vão por DM.)
+
+## Licença
+
+[MIT](LICENSE)
