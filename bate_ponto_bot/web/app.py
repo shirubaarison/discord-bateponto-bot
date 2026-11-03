@@ -79,7 +79,7 @@ MAX_TRACKED_LOGIN_CLIENTS = 2048
 class Viewer:
     """The authenticated dashboard user.
 
-    ``guild_ids`` is None for the password super-admin, who can see every guild.
+    ``guild_ids`` is None for super-admins, who can see every guild.
     """
 
     name: str
@@ -201,6 +201,7 @@ def create_app(settings: Settings | None = None) -> Flask:
     discord_client_secret = (app_settings.discord_client_secret or "").strip()
     password_login_enabled = bool(dashboard_username or dashboard_password_hash)
     discord_login_enabled = bool(discord_client_id or discord_client_secret)
+    admin_discord_ids = app_settings.admin_discord_ids
 
     if not password_login_enabled and not discord_login_enabled:
         raise ValueError(
@@ -301,7 +302,9 @@ def create_app(settings: Settings | None = None) -> Flask:
                     viewer = Viewer(
                         name=name,
                         discord_user_id=discord_user_id,
-                        guild_ids=frozenset(guild_ids),
+                        guild_ids=(
+                            None if discord_user_id in admin_discord_ids else frozenset(guild_ids)
+                        ),
                     )
 
         g.viewer = viewer

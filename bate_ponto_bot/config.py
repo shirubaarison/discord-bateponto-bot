@@ -39,6 +39,19 @@ class Settings(BaseSettings):
     discord_redirect_uri: str | None = None
     # Public dashboard address, linked in the bot's welcome message.
     dashboard_url: str | None = None
+    # Comma-separated Discord user IDs that can see every server on the dashboard.
+    dashboard_admin_discord_ids: str = ""
+
+    @property
+    def admin_discord_ids(self) -> frozenset[int]:
+        try:
+            return frozenset(
+                int(value) for value in self.dashboard_admin_discord_ids.replace(",", " ").split()
+            )
+        except ValueError as error:
+            raise ValueError(
+                "DASHBOARD_ADMIN_DISCORD_IDS must be Discord user IDs separated by commas."
+            ) from error
 
     @property
     def resolved_database_url(self) -> str:

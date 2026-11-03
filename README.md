@@ -166,6 +166,7 @@ inicialização. O [`.env.example`](.env.example) documenta cada uma.
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | Login com Discord (OAuth2) |
 | `DISCORD_REDIRECT_URI` | URL de retorno do OAuth2 cadastrada no Developer Portal |
 | `DASHBOARD_URL` | Endereço público do dashboard, citado na mensagem de boas-vindas (opcional) |
+| `DASHBOARD_ADMIN_DISCORD_IDS` | IDs de usuário do Discord, separados por vírgula, que veem todos os servidores |
 | `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD_HASH` | Acesso administrativo com senha (opcional) |
 | `DASHBOARD_SECURE_COOKIES` | `true` exige HTTPS |
 | `DASHBOARD_PROXY_FIX` | `true` quando atrás de proxy reverso |

@@ -202,3 +202,23 @@ def test_discord_only_configuration_disables_password_login() -> None:
     assert "Entrar com Discord" in page.text
     assert 'name="password"' not in page.text
     assert client.post("/login", data={"username": "x", "password": "y"}).status_code == 404
+
+
+def test_admin_discord_account_sees_every_guild() -> None:
+    client = make_app(dashboard_admin_discord_ids=f"123, {DISCORD_USER_ID}").test_client()
+    with dashboard_mocks({OWN_GUILD}) as mocks:
+        discord_login(client)
+
+        assert client.get(f"/?guild_id={OTHER_GUILD}").status_code == 200
+        assert client.get(f"/export/entries?guild_id={OTHER_GUILD}").status_code == 200
+        assert client.get("/api/entries/10/events").status_code == 200
+        mocks["get_entry_guild_id"].assert_not_called()
+
+
+def test_admin_discord_ids_must_be_numbers() -> None:
+    try:
+        make_app(dashboard_admin_discord_ids="not-an-id")
+    except ValueError as error:
+        assert "DASHBOARD_ADMIN_DISCORD_IDS" in str(error)
+    else:
+        raise AssertionError("Invalid admin IDs were accepted")
