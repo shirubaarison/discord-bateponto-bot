@@ -814,3 +814,65 @@ def edit_entry_times(
             ),
         )
         return dict(updated_entry)
+
+
+def get_entry_guild_id(conn: Connection, entry_id: int) -> int | None:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute("SELECT guild_id FROM time_entries WHERE id = %s", (entry_id,))
+        row = cur.fetchone()
+    return int(row["guild_id"]) if row else None
+
+
+def save_dashboard_user_login(
+    conn: Connection,
+    *,
+    discord_user_id: int,
+    username: str,
+    display_name: str | None,
+    avatar_hash: str | None,
+    guild_ids: set[int],
+) -> None:
+    """Create or update a Discord dashboard account and replace its manageable guilds."""
+    with conn.transaction(), conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO dashboard_users (discord_user_id, username, display_name, avatar_hash)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (discord_user_id) DO UPDATE
+            SET username = EXCLUDED.username,
+                display_name = EXCLUDED.display_name,
+                avatar_hash = EXCLUDED.avatar_hash,
+                last_login_at = now()
+            """,
+            (discord_user_id, username, display_name, avatar_hash),
+        )
+        cur.execute(
+            "DELETE FROM dashboard_user_guilds WHERE discord_user_id = %s",
+            (discord_user_id,),
+        )
+        if guild_ids:
+            cur.executemany(
+                """
+                INSERT INTO dashboard_user_guilds (discord_user_id, guild_id)
+                VALUES (%s, %s)
+                """,
+                [(discord_user_id, guild_id) for guild_id in sorted(guild_ids)],
+            )
+
+
+def get_dashboard_user_guild_ids(conn: Connection, discord_user_id: int) -> set[int] | None:
+    """Guild IDs linked to a dashboard account, or None if the account no longer exists."""
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT u.discord_user_id, ug.guild_id
+            FROM dashboard_users u
+            LEFT JOIN dashboard_user_guilds ug ON ug.discord_user_id = u.discord_user_id
+            WHERE u.discord_user_id = %s
+            """,
+            (discord_user_id,),
+        )
+        rows = list(cur.fetchall())
+    if not rows:
+        return None
+    return {int(row["guild_id"]) for row in rows if row["guild_id"] is not None}

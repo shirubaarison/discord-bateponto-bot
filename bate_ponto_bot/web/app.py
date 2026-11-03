@@ -5,13 +5,24 @@ import logging
 import secrets
 import time as time_module
 from collections import deque
+from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
 from threading import Lock
 from typing import Any
 from urllib.parse import urlsplit
 
 import psycopg
-from flask import Flask, Response, g, redirect, render_template, request, session, url_for
+from flask import (
+    Flask,
+    Response,
+    abort,
+    g,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from psycopg.rows import dict_row
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash
@@ -20,6 +31,13 @@ from bate_ponto_bot.config import Settings
 from bate_ponto_bot.utils import LOCAL_TIMEZONE
 from bate_ponto_bot.web.csv_export import generate_entries_csv, generate_users_summary_csv
 from bate_ponto_bot.web.discord_api import (
+    DiscordOAuthError,
+    build_authorize_url,
+    build_bot_invite_url,
+    exchange_oauth_code,
+    fetch_oauth_guilds,
+    fetch_oauth_user,
+    manageable_guild_ids,
     resolve_discord_guild,
     resolve_discord_guilds,
     resolve_discord_user,
@@ -31,21 +49,50 @@ from bate_ponto_bot.web.queries import (
     get_active_entries,
     get_all_entries,
     get_dashboard_stats,
+    get_dashboard_user_guild_ids,
     get_entry_events,
+    get_entry_guild_id,
     get_guilds,
     get_recent_events,
     get_user_entries,
     get_user_stats,
     get_user_weekly_totals,
     get_users_summary,
+    save_dashboard_user_login,
 )
 
 LOGGER = logging.getLogger(__name__)
 AUTH_SESSION_KEY = "dashboard_user"
+AUTH_KIND_SESSION_KEY = "auth_kind"
+DISCORD_USER_SESSION_KEY = "discord_user_id"
+OAUTH_STATE_SESSION_KEY = "oauth_state"
+OAUTH_NEXT_SESSION_KEY = "oauth_next"
 CSRF_SESSION_KEY = "csrf_token"
 DEFAULT_SECRET_KEY = "bate-ponto-secret-key-change-in-prod"
 EXAMPLE_SECRET_KEY = "gere-uma-chave-aleatoria-com-pelo-menos-32-caracteres"
 MAX_TRACKED_LOGIN_CLIENTS = 2048
+
+
+@dataclass(frozen=True)
+class Viewer:
+    """The authenticated dashboard user.
+
+    ``guild_ids`` is None for the password super-admin, who can see every guild.
+    """
+
+    name: str
+    discord_user_id: int | None = None
+    guild_ids: frozenset[int] | None = None
+
+    @property
+    def is_admin(self) -> bool:
+        return self.guild_ids is None
+
+    @property
+    def audit_name(self) -> str:
+        if self.discord_user_id is None:
+            return self.name
+        return f"{self.name} (Discord {self.discord_user_id})"
 
 
 def _safe_redirect_target(value: str | None) -> str | None:
@@ -147,16 +194,27 @@ def create_app(settings: Settings | None = None) -> Flask:
 
     dashboard_username = (app_settings.dashboard_username or "").strip()
     dashboard_password_hash = (app_settings.dashboard_password_hash or "").strip()
-    if not dashboard_username or not dashboard_password_hash:
+    discord_client_id = app_settings.discord_client_id
+    discord_client_secret = (app_settings.discord_client_secret or "").strip()
+    password_login_enabled = bool(dashboard_username or dashboard_password_hash)
+    discord_login_enabled = bool(discord_client_id or discord_client_secret)
+
+    if not password_login_enabled and not discord_login_enabled:
         raise ValueError(
-            "Configure DASHBOARD_USERNAME and DASHBOARD_PASSWORD_HASH before starting the dashboard."
+            "Configure Discord login (DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET) and/or "
+            "DASHBOARD_USERNAME and DASHBOARD_PASSWORD_HASH before starting the dashboard."
         )
-    if not dashboard_password_hash.startswith(("scrypt:", "pbkdf2:")):
-        raise ValueError("DASHBOARD_PASSWORD_HASH must be a Werkzeug scrypt or PBKDF2 hash.")
-    try:
-        check_password_hash(dashboard_password_hash, "")
-    except ValueError as error:
-        raise ValueError("DASHBOARD_PASSWORD_HASH is not a valid password hash.") from error
+    if password_login_enabled:
+        if not dashboard_username or not dashboard_password_hash:
+            raise ValueError("Configure both DASHBOARD_USERNAME and DASHBOARD_PASSWORD_HASH.")
+        if not dashboard_password_hash.startswith(("scrypt:", "pbkdf2:")):
+            raise ValueError("DASHBOARD_PASSWORD_HASH must be a Werkzeug scrypt or PBKDF2 hash.")
+        try:
+            check_password_hash(dashboard_password_hash, "")
+        except ValueError as error:
+            raise ValueError("DASHBOARD_PASSWORD_HASH is not a valid password hash.") from error
+    if discord_login_enabled and (not discord_client_id or not discord_client_secret):
+        raise ValueError("Configure both DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET.")
     if (
         app_settings.dashboard_secret_key in {DEFAULT_SECRET_KEY, EXAMPLE_SECRET_KEY}
         or len(app_settings.dashboard_secret_key) < 32
@@ -172,7 +230,9 @@ def create_app(settings: Settings | None = None) -> Flask:
         PERMANENT_SESSION_LIFETIME=timedelta(hours=app_settings.dashboard_session_hours),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_PATH="/",
-        SESSION_COOKIE_SAMESITE="Strict",
+        # Lax (not Strict) so the cookie survives the redirect back from Discord's
+        # OAuth page; state-changing requests are still protected by CSRF tokens.
+        SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=app_settings.dashboard_secure_cookies,
         SESSION_REFRESH_EACH_REQUEST=False,
     )
@@ -220,18 +280,106 @@ def create_app(settings: Settings | None = None) -> Flask:
         with failed_logins_lock:
             failed_logins.pop(client_key, None)
 
+    def current_viewer() -> Viewer | None:
+        if "viewer" in g:
+            return g.viewer
+
+        viewer: Viewer | None = None
+        kind = session.get(AUTH_KIND_SESSION_KEY)
+        name = str(session.get(AUTH_SESSION_KEY, ""))
+        if kind == "admin" and password_login_enabled:
+            if _constant_time_text_equal(name, dashboard_username):
+                viewer = Viewer(name=dashboard_username)
+        elif kind == "discord" and discord_login_enabled:
+            discord_user_id = session.get(DISCORD_USER_SESSION_KEY)
+            if isinstance(discord_user_id, int):
+                guild_ids = get_dashboard_user_guild_ids(get_db(), discord_user_id)
+                if guild_ids is not None:
+                    viewer = Viewer(
+                        name=name,
+                        discord_user_id=discord_user_id,
+                        guild_ids=frozenset(guild_ids),
+                    )
+
+        g.viewer = viewer
+        return viewer
+
+    def require_viewer() -> Viewer:
+        viewer = current_viewer()
+        if viewer is None:
+            abort(401)
+        return viewer
+
+    def visible_guilds(conn: psycopg.Connection) -> list[dict[str, Any]]:
+        viewer = require_viewer()
+        guilds = get_guilds(conn)
+        if viewer.guild_ids is None:
+            return guilds
+        return [guild for guild in guilds if int(guild["guild_id"]) in viewer.guild_ids]
+
+    def scope_guild_id(
+        requested: int | None,
+        guilds: list[dict[str, Any]],
+        *,
+        default_first: bool,
+    ) -> int | None:
+        """Pick the guild a request works on, rejecting guilds the viewer cannot access.
+
+        The super-admin may pass None to query every guild; Discord users always get
+        a concrete guild they manage.
+        """
+        viewer = require_viewer()
+        guild_ids = [int(guild["guild_id"]) for guild in guilds]
+        if viewer.is_admin:
+            if requested is None and default_first and guild_ids:
+                return guild_ids[0]
+            return requested
+        if requested is None:
+            if not guild_ids:
+                abort(404)
+            return guild_ids[0]
+        if requested not in guild_ids:
+            abort(404)
+        return requested
+
+    def scope_guild_id_for_viewer(conn: psycopg.Connection, requested: int | None) -> int | None:
+        if require_viewer().is_admin:
+            return requested
+        return scope_guild_id(requested, visible_guilds(conn), default_first=False)
+
+    def require_entry_access(conn: psycopg.Connection, entry_id: int) -> None:
+        viewer = require_viewer()
+        if viewer.guild_ids is None:
+            return
+        guild_id = get_entry_guild_id(conn, entry_id)
+        if guild_id is None or guild_id not in viewer.guild_ids:
+            abort(404)
+
+    def discord_redirect_uri() -> str:
+        return app_settings.discord_redirect_uri or url_for("discord_callback", _external=True)
+
+    def render_login(error: str | None = None, next_target: str | None = None) -> str:
+        return render_template("login.html", error=error, next_target=next_target)
+
     @app.context_processor
     def inject_auth_context() -> dict[str, Any]:
+        viewer = g.get("viewer")
         return {
             "csrf_token": csrf_token,
-            "authenticated_username": session.get(AUTH_SESSION_KEY),
+            "viewer": viewer,
+            "authenticated_username": viewer.name if viewer else None,
+            "password_login_enabled": password_login_enabled,
+            "discord_login_enabled": discord_login_enabled,
+            "bot_invite_url": (
+                build_bot_invite_url(discord_client_id) if discord_client_id else None
+            ),
         }
 
     @app.before_request
     def require_dashboard_login() -> Response | None:
-        if request.endpoint in {"login", "healthz", "static"}:
+        if request.endpoint in {"login", "discord_login", "discord_callback", "healthz", "static"}:
             return None
-        if _constant_time_text_equal(str(session.get(AUTH_SESSION_KEY, "")), dashboard_username):
+        if current_viewer() is not None:
             return None
 
         next_path = request.full_path[:-1] if request.full_path.endswith("?") else request.full_path
@@ -272,7 +420,7 @@ def create_app(settings: Settings | None = None) -> Flask:
 
     @app.route("/login", methods=["GET", "POST"])
     def login() -> str | Response | tuple[str, int]:
-        if session.get(AUTH_SESSION_KEY) == dashboard_username:
+        if current_viewer() is not None:
             return redirect(url_for("index"))
 
         error: str | None = None
@@ -280,6 +428,8 @@ def create_app(settings: Settings | None = None) -> Flask:
         next_target = _safe_redirect_target(request.values.get("next"))
 
         if request.method == "POST":
+            if not password_login_enabled:
+                abort(404)
             supplied_csrf = request.form.get("csrf_token", "")
             expected_csrf = session.get(CSRF_SESSION_KEY, "")
             if not expected_csrf or not _constant_time_text_equal(
@@ -307,6 +457,7 @@ def create_app(settings: Settings | None = None) -> Flask:
             if username_matches and password_matches:
                 clear_login_attempts(client_key)
                 session.clear()
+                session[AUTH_KIND_SESSION_KEY] = "admin"
                 session[AUTH_SESSION_KEY] = dashboard_username
                 session.permanent = True
                 csrf_token()
@@ -315,7 +466,63 @@ def create_app(settings: Settings | None = None) -> Flask:
             error = "Usuário ou senha inválidos."
             status = 401
 
-        return render_template("login.html", error=error, next_target=next_target), status
+        return render_login(error, next_target), status
+
+    @app.get("/auth/discord")
+    def discord_login() -> Response:
+        if not discord_login_enabled or discord_client_id is None:
+            abort(404)
+        state = secrets.token_urlsafe(32)
+        session[OAUTH_STATE_SESSION_KEY] = state
+        session[OAUTH_NEXT_SESSION_KEY] = _safe_redirect_target(request.args.get("next"))
+        return redirect(build_authorize_url(discord_client_id, discord_redirect_uri(), state))
+
+    @app.get("/auth/discord/callback")
+    def discord_callback() -> Response | tuple[str, int]:
+        if not discord_login_enabled or discord_client_id is None:
+            abort(404)
+
+        expected_state = session.pop(OAUTH_STATE_SESSION_KEY, None)
+        next_target = _safe_redirect_target(session.pop(OAUTH_NEXT_SESSION_KEY, None))
+        supplied_state = request.args.get("state", "")
+        if not isinstance(expected_state, str) or not _constant_time_text_equal(
+            supplied_state, expected_state
+        ):
+            return render_login("Sessão de login expirada. Tente novamente."), 400
+
+        code = request.args.get("code", "")
+        if request.args.get("error") or not code:
+            return render_login("Login com o Discord cancelado."), 400
+
+        try:
+            access_token = exchange_oauth_code(
+                discord_client_id, discord_client_secret, code, discord_redirect_uri()
+            )
+            discord_user = fetch_oauth_user(access_token)
+            discord_guilds = fetch_oauth_guilds(access_token)
+        except DiscordOAuthError as error:
+            LOGGER.warning("Discord OAuth login failed: %s", error)
+            return render_login("Não foi possível entrar com o Discord. Tente novamente."), 502
+
+        discord_user_id = int(discord_user["id"])
+        username = str(discord_user.get("username") or discord_user_id)
+        display_name = discord_user.get("global_name") or None
+        save_dashboard_user_login(
+            get_db(),
+            discord_user_id=discord_user_id,
+            username=username,
+            display_name=display_name,
+            avatar_hash=discord_user.get("avatar") or None,
+            guild_ids=manageable_guild_ids(discord_guilds),
+        )
+
+        session.clear()
+        session[AUTH_KIND_SESSION_KEY] = "discord"
+        session[DISCORD_USER_SESSION_KEY] = discord_user_id
+        session[AUTH_SESSION_KEY] = display_name or username
+        session.permanent = True
+        csrf_token()
+        return redirect(next_target or url_for("index"))
 
     @app.post("/logout")
     def logout() -> Response | tuple[str, int]:
@@ -330,6 +537,7 @@ def create_app(settings: Settings | None = None) -> Flask:
             return "Requisição inválida.", 400
 
         conn = get_db()
+        require_entry_access(conn, entry_id)
         finish_active_entry(conn, entry_id)
         guild_id = request.form.get("guild_id", type=int)
         return redirect(url_for("index", guild_id=guild_id))
@@ -352,12 +560,13 @@ def create_app(settings: Settings | None = None) -> Flask:
             return "O tempo trabalhado não pode exceder o intervalo entre início e fim.", 400
 
         conn = get_db()
+        require_entry_access(conn, entry_id)
         entry = edit_entry_times(
             conn,
             entry_id=entry_id,
             started_at=started_at,
             ended_at=ended_at,
-            editor_username=dashboard_username,
+            editor_username=require_viewer().audit_name,
             worked_seconds=worked_seconds,
         )
         if entry is None:
@@ -384,7 +593,6 @@ def create_app(settings: Settings | None = None) -> Flask:
 
     @app.route("/")
     def index() -> str:
-        guild_id_param = request.args.get("guild_id", type=int)
         preset = request.args.get("preset")
         start_date_str = request.args.get("start_date")
         end_date_str = request.args.get("end_date")
@@ -392,9 +600,12 @@ def create_app(settings: Settings | None = None) -> Flask:
         start_dt, end_dt, active_preset = parse_date_filters(preset, start_date_str, end_date_str)
 
         conn = get_db()
-        guilds = get_guilds(conn)
-        if guild_id_param is None and guilds:
-            guild_id_param = int(guilds[0]["guild_id"])
+        guilds = visible_guilds(conn)
+        if not guilds and not require_viewer().is_admin:
+            return render_template("no_guilds.html")
+        guild_id_param = scope_guild_id(
+            request.args.get("guild_id", type=int), guilds, default_first=True
+        )
 
         stats = get_dashboard_stats(
             conn, guild_id=guild_id_param, start_date=start_dt, end_date=end_dt
@@ -429,7 +640,6 @@ def create_app(settings: Settings | None = None) -> Flask:
     @app.route("/users/<int:user_id>")
     @app.route("/users/<int:guild_id>/<int:user_id>")
     def user_detail(user_id: int, guild_id: int | None = None) -> str:
-        guild_id_param = guild_id or request.args.get("guild_id", type=int)
         preset = request.args.get("preset")
         start_date_str = request.args.get("start_date")
         end_date_str = request.args.get("end_date")
@@ -437,6 +647,9 @@ def create_app(settings: Settings | None = None) -> Flask:
         start_dt, end_dt, active_preset = parse_date_filters(preset, start_date_str, end_date_str)
 
         conn = get_db()
+        guild_id_param = scope_guild_id_for_viewer(
+            conn, guild_id or request.args.get("guild_id", type=int)
+        )
         user_stats = get_user_stats(
             conn, user_id=user_id, guild_id=guild_id_param, start_date=start_dt, end_date=end_dt
         )
@@ -470,11 +683,13 @@ def create_app(settings: Settings | None = None) -> Flask:
 
     @app.route("/events")
     def events_page() -> str:
-        guild_id_param = request.args.get("guild_id", type=int)
         conn = get_db()
-        guilds = get_guilds(conn)
-        if guild_id_param is None and guilds:
-            guild_id_param = int(guilds[0]["guild_id"])
+        guilds = visible_guilds(conn)
+        if not guilds and not require_viewer().is_admin:
+            return render_template("no_guilds.html")
+        guild_id_param = scope_guild_id(
+            request.args.get("guild_id", type=int), guilds, default_first=True
+        )
 
         events = get_recent_events(conn, guild_id=guild_id_param, limit=100)
 
@@ -495,6 +710,7 @@ def create_app(settings: Settings | None = None) -> Flask:
     @app.route("/api/entries/<int:entry_id>/events")
     def api_entry_events(entry_id: int) -> dict[str, Any]:
         conn = get_db()
+        require_entry_access(conn, entry_id)
         events = get_entry_events(conn, entry_id)
         return {"entry_id": entry_id, "events": events}
 
@@ -502,7 +718,6 @@ def create_app(settings: Settings | None = None) -> Flask:
     @app.route("/export/summary")
     @app.route("/export/summary.csv")
     def export_summary() -> Response:
-        guild_id_param = request.args.get("guild_id", type=int)
         preset = request.args.get("preset")
         start_date_str = request.args.get("start_date")
         end_date_str = request.args.get("end_date")
@@ -510,6 +725,7 @@ def create_app(settings: Settings | None = None) -> Flask:
         start_dt, end_dt, _ = parse_date_filters(preset, start_date_str, end_date_str)
 
         conn = get_db()
+        guild_id_param = scope_guild_id_for_viewer(conn, request.args.get("guild_id", type=int))
         users_summary = get_users_summary(
             conn, guild_id=guild_id_param, start_date=start_dt, end_date=end_dt
         )
@@ -529,7 +745,6 @@ def create_app(settings: Settings | None = None) -> Flask:
     @app.route("/export/entries")
     @app.route("/export/entries.csv")
     def export_entries() -> Response:
-        guild_id_param = request.args.get("guild_id", type=int)
         user_id_param = request.args.get("user_id", type=int)
         preset = request.args.get("preset")
         start_date_str = request.args.get("start_date")
@@ -538,6 +753,7 @@ def create_app(settings: Settings | None = None) -> Flask:
         start_dt, end_dt, _ = parse_date_filters(preset, start_date_str, end_date_str)
 
         conn = get_db()
+        guild_id_param = scope_guild_id_for_viewer(conn, request.args.get("guild_id", type=int))
         entries = get_all_entries(
             conn,
             guild_id=guild_id_param,
@@ -563,7 +779,6 @@ def create_app(settings: Settings | None = None) -> Flask:
     @app.route("/export/user/<int:user_id>.csv")
     @app.route("/export/user/<int:guild_id>/<int:user_id>")
     def export_single_user(user_id: int, guild_id: int | None = None) -> Response:
-        guild_id_param = guild_id or request.args.get("guild_id", type=int)
         preset = request.args.get("preset")
         start_date_str = request.args.get("start_date")
         end_date_str = request.args.get("end_date")
@@ -571,6 +786,9 @@ def create_app(settings: Settings | None = None) -> Flask:
         start_dt, end_dt, _ = parse_date_filters(preset, start_date_str, end_date_str)
 
         conn = get_db()
+        guild_id_param = scope_guild_id_for_viewer(
+            conn, guild_id or request.args.get("guild_id", type=int)
+        )
         entries = get_user_entries(
             conn,
             user_id=user_id,

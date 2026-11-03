@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     dashboard_login_max_attempts: int = Field(default=5, gt=0, le=20)
     dashboard_login_window_seconds: int = Field(default=900, ge=60, le=3600)
     dashboard_proxy_fix: bool = True
+    discord_client_id: int | None = Field(default=None, gt=0)
+    discord_client_secret: str | None = None
+    discord_redirect_uri: str | None = None
 
     @property
     def resolved_database_url(self) -> str:

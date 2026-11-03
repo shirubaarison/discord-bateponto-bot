@@ -366,7 +366,7 @@ def test_dashboard_sets_secure_session_cookie() -> None:
 
     assert "Secure" in cookie
     assert "HttpOnly" in cookie
-    assert "SameSite=Strict" in cookie
+    assert "SameSite=Lax" in cookie
 
 
 def test_finish_active_entry_updates_entry_and_creates_event() -> None:

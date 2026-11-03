@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}Nenhum servidor | Bate-Ponto Discord{% endblock %}
+
+{% block content %}
+<div class="section-card empty-guilds">
+    <h1>Nenhum servidor disponível</h1>
+    <p>
+        O painel mostra os servidores em que você tem a permissão <strong>Gerenciar Servidor</strong>
+        e onde o bot já está instalado e configurado.
+    </p>
+    <p>Adicione o bot a um servidor, configure-o com <code>/config</code> e recarregue esta página.</p>
+    <div class="empty-guilds-actions">
+        {% if bot_invite_url %}
+        <a href="{{ bot_invite_url }}" class="btn btn-primary" target="_blank" rel="noopener noreferrer">
+            <i data-lucide="plus"></i> Adicionar o bot a um servidor
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
