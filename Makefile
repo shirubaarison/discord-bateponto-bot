@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install env secret hash db migrate bot dashboard up down logs lint format test check
+.PHONY: help install env secret hash db migrate seed bot dashboard up down logs lint format test check
 
 help: ## Lista os comandos disponíveis
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -21,6 +21,10 @@ db: ## Sobe o PostgreSQL local
 
 migrate: ## Aplica as migrações (use POSTGRES_HOST=localhost ao rodar fora do Docker)
 	uv run alembic upgrade head
+
+seed: ## Cria pontos de exemplo: make seed GUILD=<id do servidor> [FUSO=America/Sao_Paulo]
+	@test -n "$(GUILD)" || (echo "Informe GUILD=<id do servidor>" && exit 1)
+	uv run python scripts/seed_demo.py --guild-id $(GUILD) --fuso $(or $(FUSO),America/Sao_Paulo)
 
 bot: ## Roda o bot localmente
 	uv run bate-ponto-bot
