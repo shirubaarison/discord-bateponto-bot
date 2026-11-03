@@ -4,6 +4,7 @@ import json
 import logging
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -154,3 +155,112 @@ def resolve_discord_guilds(
 ) -> dict[int, dict[str, Any]]:
     """Resolve a list of Discord guild IDs."""
     return {guild_id: resolve_discord_guild(token, guild_id) for guild_id in guild_ids}
+
+
+# OAuth2 ("Login with Discord")
+
+DISCORD_AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
+DISCORD_API_BASE = "https://discord.com/api/v10"
+OAUTH_SCOPES = "identify guilds"
+ADMINISTRATOR_PERMISSION = 1 << 3
+MANAGE_GUILD_PERMISSION = 1 << 5
+# View Channel + Send Messages + Manage Messages (see README).
+BOT_INVITE_PERMISSIONS = (1 << 10) | (1 << 11) | (1 << 13)
+
+
+class DiscordOAuthError(Exception):
+    """Raised when the Discord OAuth2 flow cannot be completed."""
+
+
+def build_authorize_url(client_id: int, redirect_uri: str, state: str) -> str:
+    query = urllib.parse.urlencode(
+        {
+            "response_type": "code",
+            "client_id": client_id,
+            "scope": OAUTH_SCOPES,
+            "redirect_uri": redirect_uri,
+            "state": state,
+            "prompt": "none",
+        }
+    )
+    return f"{DISCORD_AUTHORIZE_URL}?{query}"
+
+
+def build_bot_invite_url(client_id: int) -> str:
+    query = urllib.parse.urlencode(
+        {
+            "client_id": client_id,
+            "scope": "bot applications.commands",
+            "permissions": BOT_INVITE_PERMISSIONS,
+        }
+    )
+    return f"{DISCORD_AUTHORIZE_URL}?{query}"
+
+
+def _oauth_request(request: urllib.request.Request) -> Any:
+    request.add_header("User-Agent", "BatePontoDashboard/1.0")
+    try:
+        with urllib.request.urlopen(request, timeout=5.0) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, ValueError) as err:
+        raise DiscordOAuthError(str(err)) from err
+
+
+def exchange_oauth_code(client_id: int, client_secret: str, code: str, redirect_uri: str) -> str:
+    """Exchange an authorization code for a user access token."""
+    body = urllib.parse.urlencode(
+        {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        f"{DISCORD_API_BASE}/oauth2/token",
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    data = _oauth_request(request)
+    access_token = data.get("access_token") if isinstance(data, dict) else None
+    if not isinstance(access_token, str) or not access_token:
+        raise DiscordOAuthError("Discord did not return an access token")
+    return access_token
+
+
+def _get_with_bearer(path: str, access_token: str) -> Any:
+    request = urllib.request.Request(
+        f"{DISCORD_API_BASE}{path}",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    return _oauth_request(request)
+
+
+def fetch_oauth_user(access_token: str) -> dict[str, Any]:
+    data = _get_with_bearer("/users/@me", access_token)
+    if not isinstance(data, dict) or "id" not in data:
+        raise DiscordOAuthError("Unexpected /users/@me response")
+    return data
+
+
+def fetch_oauth_guilds(access_token: str) -> list[dict[str, Any]]:
+    data = _get_with_bearer("/users/@me/guilds", access_token)
+    if not isinstance(data, list):
+        raise DiscordOAuthError("Unexpected /users/@me/guilds response")
+    return data
+
+
+def manageable_guild_ids(guilds: list[dict[str, Any]]) -> set[int]:
+    """Guild IDs where the user is owner, administrator or has Manage Server."""
+    result: set[int] = set()
+    for guild in guilds:
+        try:
+            permissions = int(guild.get("permissions") or 0)
+            guild_id = int(guild["id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if guild.get("owner") or permissions & (ADMINISTRATOR_PERMISSION | MANAGE_GUILD_PERMISSION):
+            result.add(guild_id)
+    return result

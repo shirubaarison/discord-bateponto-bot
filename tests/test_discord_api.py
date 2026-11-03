@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from urllib.parse import parse_qs, urlsplit
+
 from bate_ponto_bot.web.discord_api import (
+    build_authorize_url,
+    build_bot_invite_url,
+    manageable_guild_ids,
     resolve_discord_guild,
     resolve_discord_guilds,
     resolve_discord_user,
@@ -40,3 +45,33 @@ def test_resolve_discord_guilds_batch() -> None:
 
     assert results[333]["name"] == "Servidor 333"
     assert results[444]["name"] == "Servidor 444"
+
+
+def test_manageable_guild_ids_requires_owner_admin_or_manage_server() -> None:
+    guilds = [
+        {"id": "1", "owner": True, "permissions": "0"},
+        {"id": "2", "owner": False, "permissions": str(1 << 3)},
+        {"id": "3", "owner": False, "permissions": str(1 << 5)},
+        {"id": "4", "owner": False, "permissions": str(1 << 10)},
+        {"id": "not-a-number", "permissions": str(1 << 5)},
+    ]
+
+    assert manageable_guild_ids(guilds) == {1, 2, 3}
+
+
+def test_build_authorize_url_requests_identify_and_guilds() -> None:
+    url = build_authorize_url(123, "https://ponto.example.com/auth/discord/callback", "abc")
+    query = parse_qs(urlsplit(url).query)
+
+    assert url.startswith("https://discord.com/oauth2/authorize?")
+    assert query["client_id"] == ["123"]
+    assert query["scope"] == ["identify guilds"]
+    assert query["state"] == ["abc"]
+    assert query["redirect_uri"] == ["https://ponto.example.com/auth/discord/callback"]
+
+
+def test_build_bot_invite_url_includes_bot_scopes() -> None:
+    query = parse_qs(urlsplit(build_bot_invite_url(123)).query)
+
+    assert query["scope"] == ["bot applications.commands"]
+    assert query["permissions"] == [str((1 << 10) | (1 << 11) | (1 << 13))]
