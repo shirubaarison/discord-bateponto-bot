@@ -63,11 +63,27 @@ jobs:
 
     env:
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
-      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+      # The VM has no open ports: SSH goes through its Cloudflare Tunnel, authenticated
+      # with a Cloudflare Access service token (read by cloudflared from these variables).
+      TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.TUNNEL_SERVICE_TOKEN_ID }}
+      TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.TUNNEL_SERVICE_TOKEN_SECRET }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Install cloudflared
+        shell: bash
+        env:
+          CLOUDFLARED_VERSION: "2026.10.1"
+          CLOUDFLARED_SHA256: 200573c872174ab449965655febadef8edfbb144ebcaa391b700b2dedbadb3cd
+        run: |
+          set -euo pipefail
+          package="$RUNNER_TEMP/cloudflared.deb"
+          curl -fsSL -o "$package" \
+            "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64.deb"
+          echo "${CLOUDFLARED_SHA256}  ${package}" | sha256sum --check --strict -
+          sudo dpkg -i "$package"
 
       - name: Configure SSH
         shell: bash
@@ -78,7 +94,8 @@ jobs:
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          for name in DEPLOY_PATH DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
+          for name in DEPLOY_PATH DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS \
+            TUNNEL_SERVICE_TOKEN_ID TUNNEL_SERVICE_TOKEN_SECRET; do
             if [ -z "${!name}" ]; then
               echo "::error::Missing $name. See the CI/CD section of the README."
               exit 1
@@ -93,7 +110,7 @@ jobs:
           Host production
             HostName $DEPLOY_HOST
             User $DEPLOY_USER
-            Port $DEPLOY_PORT
+            ProxyCommand cloudflared access ssh --hostname %h
             IdentityFile ~/.ssh/deploy_key
             IdentitiesOnly yes
             StrictHostKeyChecking yes
