@@ -5,7 +5,14 @@ from typing import TYPE_CHECKING
 import discord
 from discord import app_commands
 
-from bate_ponto_bot.utils import channel_mention
+from bate_ponto_bot.utils import (
+    canonical_timezone_name,
+    channel_mention,
+    format_dt,
+    load_timezone,
+    timezone_names,
+    utcnow,
+)
 
 if TYPE_CHECKING:
     from bate_ponto_bot.bot import TimeClockBot
@@ -25,6 +32,33 @@ async def resolve_app_channel(
         return await channel.fetch()
     except (discord.Forbidden, discord.NotFound):
         return None
+
+
+# Shown before the user types anything; Brazil first since most servers are there.
+SUGGESTED_TIMEZONES = (
+    "America/Sao_Paulo",
+    "America/Fortaleza",
+    "America/Recife",
+    "America/Bahia",
+    "America/Belem",
+    "America/Manaus",
+    "America/Cuiaba",
+    "America/Porto_Velho",
+    "America/Rio_Branco",
+    "America/Noronha",
+    "Europe/Lisbon",
+    "UTC",
+)
+
+
+def timezone_choices(current: str) -> list[app_commands.Choice[str]]:
+    query = current.strip().replace(" ", "_").casefold()
+    names = (
+        [name for name in timezone_names() if query in name.casefold()]
+        if query
+        else list(SUGGESTED_TIMEZONES)
+    )
+    return [app_commands.Choice(name=name, value=name) for name in names[:25]]
 
 
 def is_text_app_channel(channel: app_commands.AppCommandChannel) -> bool:
@@ -298,6 +332,48 @@ class ConfigGroup(app_commands.Group):
             ephemeral=True,
         )
 
+    @app_commands.command(name="fuso", description="Define o fuso horário do servidor.")
+    @app_commands.describe(fuso="Fuso horário IANA, por exemplo America/Sao_Paulo.")
+    async def fuso(self, interaction: discord.Interaction, fuso: str) -> None:
+        guild = require_guild(interaction)
+        if guild is None:
+            return
+
+        timezone_name = canonical_timezone_name(fuso)
+        if timezone_name is None:
+            self.bot.log_interaction(
+                "config_fuso",
+                "denied_unknown_timezone",
+                interaction=interaction,
+                timezone=fuso[:64],
+            )
+            await interaction.response.send_message(
+                "Fuso horário desconhecido. Escolha uma das opções sugeridas, "
+                "por exemplo `America/Sao_Paulo`.",
+                ephemeral=True,
+            )
+            return
+
+        await self.bot.db.set_timezone(guild.id, timezone_name)
+        self.bot.set_guild_timezone(guild.id, timezone_name)
+        self.bot.log_interaction(
+            "config_fuso",
+            "success",
+            interaction=interaction,
+            timezone=timezone_name,
+        )
+        local_now = format_dt(utcnow(), load_timezone(timezone_name))
+        await interaction.response.send_message(
+            f"Fuso horário definido para `{timezone_name}` (agora: {local_now}).",
+            ephemeral=True,
+        )
+
+    @fuso.autocomplete("fuso")
+    async def fuso_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        return timezone_choices(current)
+
     @app_commands.command(name="mostrar", description="Mostra a configuração atual.")
     async def mostrar(self, interaction: discord.Interaction) -> None:
         guild = require_guild(interaction)
@@ -330,6 +406,7 @@ class ConfigGroup(app_commands.Group):
             f"Logs: {audit}\n"
             f"Tolerância: {settings.absence_tolerance_seconds // 60} minuto(s)\n"
             f"Limpeza do painel: {cleanup}\n"
+            f"Fuso horário: `{settings.timezone}`\n"
             f"Voz permitida: {', '.join(allowed_mentions) if allowed_mentions else 'nenhum canal'}",
             ephemeral=True,
         )

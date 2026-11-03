@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 
 import discord
 from discord.ext import commands
@@ -17,18 +18,19 @@ from bate_ponto_bot.commands import (
 from bate_ponto_bot.config import Settings
 from bate_ponto_bot.db import Database, TimeEntry
 from bate_ponto_bot.utils import (
-    LOCAL_TIMEZONE,
+    DEFAULT_TIMEZONE,
     channel_mention,
     format_dt,
     format_duration_words,
     format_seconds,
+    load_timezone,
     utcnow,
     worked_seconds,
 )
 from bate_ponto_bot.views import TimeClockView, can_use_voice, require_member
 
 __all__ = [
-    "LOCAL_TIMEZONE",
+    "DEFAULT_TIMEZONE",
     "ConfigGroup",
     "TimeClockBot",
     "TimeClockView",
@@ -62,9 +64,18 @@ class TimeClockBot(commands.Bot):
         self.absence_tasks: dict[int, asyncio.Task[None]] = {}
         self.cleanup_tasks: set[asyncio.Task[None]] = set()
         self.pause_expiration_task: asyncio.Task[None] | None = None
+        self.guild_timezones: dict[int, ZoneInfo] = {}
+
+    def timezone_for(self, guild_id: int) -> ZoneInfo:
+        return self.guild_timezones.get(guild_id, DEFAULT_TIMEZONE)
+
+    def set_guild_timezone(self, guild_id: int, timezone_name: str) -> None:
+        self.guild_timezones[guild_id] = load_timezone(timezone_name)
 
     async def setup_hook(self) -> None:
         await self.db.connect()
+        for guild_id, timezone_name in (await self.db.list_guild_timezones()).items():
+            self.set_guild_timezone(guild_id, timezone_name)
         self._start_pause_expiration_job()
         self.add_view(TimeClockView(self))
         self.tree.add_command(ConfigGroup(self))
@@ -195,7 +206,7 @@ class TimeClockBot(commands.Bot):
                                 color=color,
                                 fields=[
                                     ("Status", status_text, True),
-                                    ("Fim", format_dt(entry.ended_at), True),
+                                    ("Fim", format_dt(entry.ended_at, self.timezone_for(entry.guild_id)), True),
                                     (
                                         "Tempo trabalhado",
                                         format_seconds(worked_seconds(entry)),
@@ -294,7 +305,7 @@ class TimeClockBot(commands.Bot):
                 "Você saiu da chamada permitida",
                 "Seu ponto continua ativo durante a tolerância. "
                 f"Volte em até {format_duration_words(settings.absence_tolerance_seconds)} "
-                f"para evitar encerramento automático.\n\nLimite: {format_dt(deadline_at)}",
+                f"para evitar encerramento automático.\n\nLimite: {format_dt(deadline_at, self.timezone_for(member.guild.id))}",
                 color=discord.Color.orange(),
                 fields=[
                     ("Status", "Em tolerância", True),
@@ -316,7 +327,7 @@ class TimeClockBot(commands.Bot):
                         before.channel.mention if before.channel else "desconhecido",
                         True,
                     ),
-                    ("Limite de retorno", format_dt(deadline_at), True),
+                    ("Limite de retorno", format_dt(deadline_at, self.timezone_for(member.guild.id)), True),
                 ],
                 user=member,
             )
@@ -383,7 +394,7 @@ class TimeClockBot(commands.Bot):
                     color=discord.Color.red(),
                     fields=[
                         ("Status", "Encerrado", True),
-                        ("Fim", format_dt(finished.ended_at), True),
+                        ("Fim", format_dt(finished.ended_at, self.timezone_for(member.guild.id)), True),
                     ],
                 )
                 await self.audit(
@@ -397,7 +408,7 @@ class TimeClockBot(commands.Bot):
                             after.channel.mention if after.channel else "desconhecido",
                             True,
                         ),
-                        ("Fim", format_dt(finished.ended_at), True),
+                        ("Fim", format_dt(finished.ended_at, self.timezone_for(member.guild.id)), True),
                         ("Tempo trabalhado", format_seconds(worked_seconds(finished)), True),
                     ],
                     user=member,
@@ -429,7 +440,7 @@ class TimeClockBot(commands.Bot):
             color=discord.Color.red(),
             fields=[
                 ("Status", "Encerrado", True),
-                ("Fim", format_dt(entry.ended_at), True),
+                ("Fim", format_dt(entry.ended_at, self.timezone_for(member.guild.id)), True),
                 ("Tempo trabalhado", format_seconds(worked_seconds(entry)), True),
             ],
         )
@@ -440,7 +451,7 @@ class TimeClockBot(commands.Bot):
             color=discord.Color.red(),
             fields=[
                 ("Canal atual", after.channel.mention if after.channel else "desconhecido", True),
-                ("Fim do ponto", format_dt(entry.ended_at), True),
+                ("Fim do ponto", format_dt(entry.ended_at, self.timezone_for(member.guild.id)), True),
                 ("Tempo trabalhado", format_seconds(worked_seconds(entry)), True),
             ],
             user=member,
@@ -757,7 +768,7 @@ class TimeClockBot(commands.Bot):
                     color=discord.Color.red(),
                     fields=[
                         ("Status", "Encerrado", True),
-                        ("Fim", format_dt(finished.ended_at), True),
+                        ("Fim", format_dt(finished.ended_at, self.timezone_for(guild_id)), True),
                         ("Tempo trabalhado", format_seconds(worked_seconds(finished)), True),
                     ],
                 )
@@ -769,10 +780,10 @@ class TimeClockBot(commands.Bot):
                     fields=[
                         (
                             "Ausente desde",
-                            format_dt(entry.absence_started_at or deadline_at),
+                            format_dt(entry.absence_started_at or deadline_at, self.timezone_for(guild_id)),
                             True,
                         ),
-                        ("Fim", format_dt(finished.ended_at), True),
+                        ("Fim", format_dt(finished.ended_at, self.timezone_for(guild_id)), True),
                         ("Tempo trabalhado", format_seconds(worked_seconds(finished)), True),
                     ],
                     user=member,

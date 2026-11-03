@@ -173,6 +173,23 @@ class Database:
             seconds,
         )
 
+    async def set_timezone(self, guild_id: int, timezone_name: str) -> None:
+        await self.execute(
+            """
+            INSERT INTO guild_settings (guild_id, timezone)
+            VALUES ($1, $2)
+            ON CONFLICT (guild_id) DO UPDATE SET
+                timezone = EXCLUDED.timezone,
+                updated_at = now()
+            """,
+            guild_id,
+            timezone_name,
+        )
+
+    async def list_guild_timezones(self) -> dict[int, str]:
+        rows = await self.fetch("SELECT guild_id, timezone FROM guild_settings")
+        return {int(row["guild_id"]): row["timezone"] for row in rows}
+
     async def add_allowed_voice_channel(self, guild_id: int, channel_id: int) -> None:
         await self.execute(
             """
@@ -487,7 +504,10 @@ class Database:
                 SELECT
                     date_trunc(
                         'week',
-                        started_at AT TIME ZONE 'America/Fortaleza'
+                        started_at AT TIME ZONE COALESCE(
+                            (SELECT timezone FROM guild_settings WHERE guild_id = $1),
+                            'America/Fortaleza'
+                        )
                     )::date AS week_start,
                     GREATEST(
                         0,

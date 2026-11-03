@@ -2,11 +2,18 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 import discord
 
 from bate_ponto_bot.models import WeeklyHours
-from bate_ponto_bot.utils import LOCAL_TIMEZONE, format_dt, format_seconds, utcnow, worked_seconds
+from bate_ponto_bot.utils import (
+    DEFAULT_TIMEZONE,
+    format_dt,
+    format_seconds,
+    utcnow,
+    worked_seconds,
+)
 
 if TYPE_CHECKING:
     from bate_ponto_bot.bot import TimeClockBot
@@ -50,6 +57,7 @@ class TimeClockView(discord.ui.View):
         member = await require_member(interaction)
         if member is None:
             return
+        tz = self.bot.timezone_for(member.guild.id)
 
         allowed, reason = await can_use_voice(self.bot, member)
         if not allowed:
@@ -86,7 +94,7 @@ class TimeClockView(discord.ui.View):
             color=discord.Color.green(),
             fields=[
                 ("Status", "Ativo", True),
-                ("Início", format_dt(entry.started_at), True),
+                ("Início", format_dt(entry.started_at, tz), True),
                 (
                     "Canal de voz",
                     member.voice.channel.mention if member.voice else "desconhecido",
@@ -100,7 +108,7 @@ class TimeClockView(discord.ui.View):
             f"{member.mention} iniciou um novo ponto.",
             color=discord.Color.green(),
             fields=[
-                ("Início", format_dt(entry.started_at), True),
+                ("Início", format_dt(entry.started_at, tz), True),
                 (
                     "Canal de voz",
                     member.voice.channel.mention if member.voice else "desconhecido",
@@ -119,6 +127,7 @@ class TimeClockView(discord.ui.View):
         member = await require_member(interaction)
         if member is None:
             return
+        tz = self.bot.timezone_for(member.guild.id)
 
         entry = await self.bot.db.get_open_entry(member.guild.id, member.id)
         if not entry:
@@ -133,7 +142,7 @@ class TimeClockView(discord.ui.View):
 
         finished = await self.bot.db.finish_entry(entry)
         weekly_hours = await self.bot.db.list_weekly_hours(member.guild.id, member.id)
-        current_week_total = current_week_worked_seconds(weekly_hours)
+        current_week_total = current_week_worked_seconds(weekly_hours, week_start=local_week_start(tz))
         self.bot._cancel_absence_check(entry.id)
         self.bot.log_interaction(
             "button_finish",
@@ -149,8 +158,8 @@ class TimeClockView(discord.ui.View):
             f"{member.mention}, seu ponto foi encerrado.",
             color=discord.Color.red(),
             fields=[
-                ("Início", format_dt(finished.started_at), True),
-                ("Fim", format_dt(finished.ended_at), True),
+                ("Início", format_dt(finished.started_at, tz), True),
+                ("Fim", format_dt(finished.ended_at, tz), True),
                 ("Tempo trabalhado", format_seconds(worked_seconds(finished)), True),
                 ("Tempo pausado", format_seconds(finished.pause_total_seconds), True),
                 ("Total na semana vigente", format_seconds(current_week_total), False),
@@ -162,8 +171,8 @@ class TimeClockView(discord.ui.View):
             f"{member.mention} finalizou o ponto.",
             color=discord.Color.red(),
             fields=[
-                ("Início", format_dt(finished.started_at), True),
-                ("Fim", format_dt(finished.ended_at), True),
+                ("Início", format_dt(finished.started_at, tz), True),
+                ("Fim", format_dt(finished.ended_at, tz), True),
                 ("Tempo trabalhado", format_seconds(worked_seconds(finished)), True),
                 ("Tempo pausado", format_seconds(finished.pause_total_seconds), True),
                 ("Total na semana vigente", format_seconds(current_week_total), False),
@@ -182,6 +191,7 @@ class TimeClockView(discord.ui.View):
         member = await require_member(interaction)
         if member is None:
             return
+        tz = self.bot.timezone_for(member.guild.id)
 
         entry = await self.bot.db.get_open_entry(member.guild.id, member.id)
         if not entry:
@@ -214,7 +224,7 @@ class TimeClockView(discord.ui.View):
                 color=discord.Color.orange(),
                 fields=[
                     ("Status", "Pausado", True),
-                    ("Pausado em", format_dt(paused.pause_started_at), True),
+                    ("Pausado em", format_dt(paused.pause_started_at, tz), True),
                     ("Tempo trabalhado", format_seconds(worked_seconds(paused)), True),
                 ],
             )
@@ -224,7 +234,7 @@ class TimeClockView(discord.ui.View):
                 f"{member.mention} pausou o ponto manualmente.",
                 color=discord.Color.orange(),
                 fields=[
-                    ("Pausado em", format_dt(paused.pause_started_at), True),
+                    ("Pausado em", format_dt(paused.pause_started_at, tz), True),
                     ("Tempo trabalhado", format_seconds(worked_seconds(paused)), True),
                 ],
                 user=member,
@@ -259,7 +269,7 @@ class TimeClockView(discord.ui.View):
             color=discord.Color.green(),
             fields=[
                 ("Status", "Ativo", True),
-                ("Retomado em", format_dt(utcnow()), True),
+                ("Retomado em", format_dt(utcnow(), tz), True),
                 ("Tempo trabalhado", format_seconds(worked_seconds(resumed)), True),
                 (
                     "Canal de voz",
@@ -274,7 +284,7 @@ class TimeClockView(discord.ui.View):
             f"{member.mention} retomou o ponto.",
             color=discord.Color.green(),
             fields=[
-                ("Retomado em", format_dt(utcnow()), True),
+                ("Retomado em", format_dt(utcnow(), tz), True),
                 ("Tempo trabalhado", format_seconds(worked_seconds(resumed)), True),
             ],
             user=member,
@@ -289,6 +299,7 @@ class TimeClockView(discord.ui.View):
         member = await require_member(interaction)
         if member is None:
             return
+        tz = self.bot.timezone_for(member.guild.id)
 
         entry = await self.bot.db.get_open_entry(member.guild.id, member.id)
         if not entry:
@@ -314,11 +325,11 @@ class TimeClockView(discord.ui.View):
         await self.bot.delete_point_status_message(member.guild, entry.id)
         fields = [
             ("Status", status.title(), True),
-            ("Início", format_dt(entry.started_at), True),
+            ("Início", format_dt(entry.started_at, tz), True),
             ("Tempo trabalhado", format_seconds(worked_seconds(entry)), True),
         ]
         if entry.status == "paused":
-            fields.append(("Pausado em", format_dt(entry.pause_started_at), True))
+            fields.append(("Pausado em", format_dt(entry.pause_started_at, tz), True))
 
         await self.bot.respond_control_embed(
             interaction,
@@ -337,6 +348,7 @@ class TimeClockView(discord.ui.View):
         member = await require_member(interaction)
         if member is None:
             return
+        tz = self.bot.timezone_for(member.guild.id)
 
         history = await self.bot.db.list_history(member.guild.id, member.id)
         if not history:
@@ -355,8 +367,8 @@ class TimeClockView(discord.ui.View):
         )
         fields = [
             (
-                format_dt(entry.started_at),
-                f"Fim: {format_dt(entry.ended_at)}\n"
+                format_dt(entry.started_at, tz),
+                f"Fim: {format_dt(entry.ended_at, tz)}\n"
                 f"Tempo trabalhado: {format_seconds(worked_seconds(entry))}",
                 False,
             )
@@ -383,6 +395,7 @@ class TimeClockView(discord.ui.View):
         member = await require_member(interaction)
         if member is None:
             return
+        tz = self.bot.timezone_for(member.guild.id)
 
         weekly_hours = await self.bot.db.list_weekly_hours(member.guild.id, member.id)
         time_info = await self.bot.db.get_user_time_info(member.guild.id, member.id)
@@ -400,10 +413,10 @@ class TimeClockView(discord.ui.View):
             interaction=interaction,
             count=len(weekly_hours),
         )
-        current_week_total = current_week_worked_seconds(weekly_hours)
+        current_week_total = current_week_worked_seconds(weekly_hours, week_start=local_week_start(tz))
         summary_fields = [
-            ("Primeiro bate-ponto", format_dt(time_info.first_started_at), True),
-            ("Último bate-ponto", format_dt(time_info.last_activity_at), True),
+            ("Primeiro bate-ponto", format_dt(time_info.first_started_at, tz), True),
+            ("Último bate-ponto", format_dt(time_info.last_activity_at, tz), True),
             ("Tempo total", format_seconds(time_info.worked_seconds), True),
             ("Pontos registrados", str(time_info.shifts_count), True),
             ("Semana vigente", f"**{format_seconds(current_week_total)}**", False),
@@ -413,12 +426,12 @@ class TimeClockView(discord.ui.View):
             "Informações do usuário",
             f"Resumo de {member.mention} e horas registradas por semana.",
             color=discord.Color.gold(),
-            fields=summary_fields + weekly_hours_fields(weekly_hours),
+            fields=summary_fields + weekly_hours_fields(weekly_hours, current_week_start=local_week_start(tz)),
         )
 
 
-def local_week_start() -> date:
-    today = utcnow().astimezone(LOCAL_TIMEZONE).date()
+def local_week_start(tz: ZoneInfo = DEFAULT_TIMEZONE) -> date:
+    today = utcnow().astimezone(tz).date()
     return today - timedelta(days=today.weekday())
 
 

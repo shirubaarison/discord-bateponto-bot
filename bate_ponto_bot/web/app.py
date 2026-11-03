@@ -10,6 +10,7 @@ from datetime import UTC, datetime, time, timedelta
 from threading import Lock
 from typing import Any
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 import psycopg
 from flask import (
@@ -28,7 +29,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash
 
 from bate_ponto_bot.config import Settings
-from bate_ponto_bot.utils import LOCAL_TIMEZONE
+from bate_ponto_bot.utils import DEFAULT_TIMEZONE
 from bate_ponto_bot.web.csv_export import generate_entries_csv, generate_users_summary_csv
 from bate_ponto_bot.web.discord_api import (
     DiscordOAuthError,
@@ -52,6 +53,7 @@ from bate_ponto_bot.web.queries import (
     get_dashboard_user_guild_ids,
     get_entry_events,
     get_entry_guild_id,
+    get_guild_timezone,
     get_guilds,
     get_recent_events,
     get_user_entries,
@@ -113,11 +115,12 @@ def parse_date_filters(
     preset: str | None,
     start_str: str | None,
     end_str: str | None,
+    tz: ZoneInfo = DEFAULT_TIMEZONE,
 ) -> tuple[datetime | None, datetime | None, str]:
-    """Parse local calendar dates into UTC datetime boundaries."""
-    now = datetime.now(LOCAL_TIMEZONE)
-    today_start_local = datetime.combine(now.date(), time.min, tzinfo=LOCAL_TIMEZONE)
-    today_end_local = datetime.combine(now.date(), time.max, tzinfo=LOCAL_TIMEZONE)
+    """Parse calendar dates in the guild's time zone into UTC datetime boundaries."""
+    now = datetime.now(tz)
+    today_start_local = datetime.combine(now.date(), time.min, tzinfo=tz)
+    today_end_local = datetime.combine(now.date(), time.max, tzinfo=tz)
 
     def as_utc(value: datetime) -> datetime:
         return value.astimezone(UTC)
@@ -141,14 +144,14 @@ def parse_date_filters(
     if start_str:
         try:
             d = datetime.strptime(start_str.strip(), "%Y-%m-%d")
-            start_dt = as_utc(datetime.combine(d.date(), time.min, tzinfo=LOCAL_TIMEZONE))
+            start_dt = as_utc(datetime.combine(d.date(), time.min, tzinfo=tz))
         except ValueError:
             pass
 
     if end_str:
         try:
             d = datetime.strptime(end_str.strip(), "%Y-%m-%d")
-            end_dt = as_utc(datetime.combine(d.date(), time.max, tzinfo=LOCAL_TIMEZONE))
+            end_dt = as_utc(datetime.combine(d.date(), time.max, tzinfo=tz))
         except ValueError:
             pass
 
@@ -156,9 +159,9 @@ def parse_date_filters(
     return start_dt, end_dt, active_preset
 
 
-def parse_datetime_local_input(value: str) -> datetime:
+def parse_datetime_local_input(value: str, tz: ZoneInfo = DEFAULT_TIMEZONE) -> datetime:
     parsed = datetime.strptime(value.strip(), "%Y-%m-%dT%H:%M")
-    return parsed.replace(tzinfo=LOCAL_TIMEZONE).astimezone(UTC)
+    return parsed.replace(tzinfo=tz).astimezone(UTC)
 
 
 def parse_duration_input(value: str) -> int:
@@ -547,9 +550,12 @@ def create_app(settings: Settings | None = None) -> Flask:
         if not valid_csrf_token():
             return "Requisição inválida.", 400
 
+        conn = get_db()
+        require_entry_access(conn, entry_id)
+        tz = get_guild_timezone(conn, get_entry_guild_id(conn, entry_id))
         try:
-            started_at = parse_datetime_local_input(request.form.get("started_at", ""))
-            ended_at = parse_datetime_local_input(request.form.get("ended_at", ""))
+            started_at = parse_datetime_local_input(request.form.get("started_at", ""), tz)
+            ended_at = parse_datetime_local_input(request.form.get("ended_at", ""), tz)
             worked_seconds = parse_duration_input(request.form.get("worked_duration", ""))
         except ValueError:
             return "Informe início, fim e tempo trabalhado válidos.", 400
@@ -559,8 +565,6 @@ def create_app(settings: Settings | None = None) -> Flask:
         if worked_seconds > int((ended_at - started_at).total_seconds()):
             return "O tempo trabalhado não pode exceder o intervalo entre início e fim.", 400
 
-        conn = get_db()
-        require_entry_access(conn, entry_id)
         entry = edit_entry_times(
             conn,
             entry_id=entry_id,
@@ -597,14 +601,16 @@ def create_app(settings: Settings | None = None) -> Flask:
         start_date_str = request.args.get("start_date")
         end_date_str = request.args.get("end_date")
 
-        start_dt, end_dt, active_preset = parse_date_filters(preset, start_date_str, end_date_str)
-
         conn = get_db()
         guilds = visible_guilds(conn)
         if not guilds and not require_viewer().is_admin:
             return render_template("no_guilds.html")
         guild_id_param = scope_guild_id(
             request.args.get("guild_id", type=int), guilds, default_first=True
+        )
+        tz = get_guild_timezone(conn, guild_id_param)
+        start_dt, end_dt, active_preset = parse_date_filters(
+            preset, start_date_str, end_date_str, tz
         )
 
         stats = get_dashboard_stats(
@@ -644,11 +650,12 @@ def create_app(settings: Settings | None = None) -> Flask:
         start_date_str = request.args.get("start_date")
         end_date_str = request.args.get("end_date")
 
-        start_dt, end_dt, active_preset = parse_date_filters(preset, start_date_str, end_date_str)
-
         conn = get_db()
         guild_id_param = scope_guild_id_for_viewer(
             conn, guild_id or request.args.get("guild_id", type=int)
+        )
+        start_dt, end_dt, active_preset = parse_date_filters(
+            preset, start_date_str, end_date_str, get_guild_timezone(conn, guild_id_param)
         )
         user_stats = get_user_stats(
             conn, user_id=user_id, guild_id=guild_id_param, start_date=start_dt, end_date=end_dt
@@ -722,10 +729,11 @@ def create_app(settings: Settings | None = None) -> Flask:
         start_date_str = request.args.get("start_date")
         end_date_str = request.args.get("end_date")
 
-        start_dt, end_dt, _ = parse_date_filters(preset, start_date_str, end_date_str)
-
         conn = get_db()
         guild_id_param = scope_guild_id_for_viewer(conn, request.args.get("guild_id", type=int))
+        start_dt, end_dt, _ = parse_date_filters(
+            preset, start_date_str, end_date_str, get_guild_timezone(conn, guild_id_param)
+        )
         users_summary = get_users_summary(
             conn, guild_id=guild_id_param, start_date=start_dt, end_date=end_dt
         )
@@ -750,10 +758,11 @@ def create_app(settings: Settings | None = None) -> Flask:
         start_date_str = request.args.get("start_date")
         end_date_str = request.args.get("end_date")
 
-        start_dt, end_dt, _ = parse_date_filters(preset, start_date_str, end_date_str)
-
         conn = get_db()
         guild_id_param = scope_guild_id_for_viewer(conn, request.args.get("guild_id", type=int))
+        start_dt, end_dt, _ = parse_date_filters(
+            preset, start_date_str, end_date_str, get_guild_timezone(conn, guild_id_param)
+        )
         entries = get_all_entries(
             conn,
             guild_id=guild_id_param,
@@ -783,11 +792,12 @@ def create_app(settings: Settings | None = None) -> Flask:
         start_date_str = request.args.get("start_date")
         end_date_str = request.args.get("end_date")
 
-        start_dt, end_dt, _ = parse_date_filters(preset, start_date_str, end_date_str)
-
         conn = get_db()
         guild_id_param = scope_guild_id_for_viewer(
             conn, guild_id or request.args.get("guild_id", type=int)
+        )
+        start_dt, end_dt, _ = parse_date_filters(
+            preset, start_date_str, end_date_str, get_guild_timezone(conn, guild_id_param)
         )
         entries = get_user_entries(
             conn,

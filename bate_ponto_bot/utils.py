@@ -1,15 +1,45 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from functools import cache
 from typing import TYPE_CHECKING
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 if TYPE_CHECKING:
     import discord
 
     from bate_ponto_bot.models import TimeEntry
 
-LOCAL_TIMEZONE = ZoneInfo("America/Fortaleza")
+DEFAULT_TIMEZONE_NAME = "America/Fortaleza"
+DEFAULT_TIMEZONE = ZoneInfo(DEFAULT_TIMEZONE_NAME)
+
+
+@cache
+def timezone_names() -> tuple[str, ...]:
+    """IANA time zone names users can pick, e.g. ``America/Sao_Paulo``."""
+    return tuple(
+        sorted(
+            name
+            for name in available_timezones()
+            if name == "UTC" or ("/" in name and not name.startswith(("Etc/", "SystemV/")))
+        )
+    )
+
+
+def canonical_timezone_name(value: str) -> str | None:
+    """Match user input to a known time zone name, ignoring case."""
+    wanted = value.strip().replace(" ", "_").casefold()
+    return next((name for name in timezone_names() if name.casefold() == wanted), None)
+
+
+def load_timezone(name: str | None) -> ZoneInfo:
+    """Return the ZoneInfo for a stored name, falling back to the default."""
+    if name:
+        try:
+            return ZoneInfo(name)
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    return DEFAULT_TIMEZONE
 
 
 def utcnow() -> datetime:
@@ -37,14 +67,14 @@ def format_seconds(total_seconds: int) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 
-def format_dt(value: datetime | None) -> str:
+def format_dt(value: datetime | None, tz: ZoneInfo = DEFAULT_TIMEZONE) -> str:
     if value is None:
         return "desconhecido"
     # PostgreSQL TIMESTAMPTZ values are normally timezone-aware. Treat a naive
     # value as UTC as a defensive fallback instead of inheriting the host TZ.
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
-    local_value = value.astimezone(LOCAL_TIMEZONE)
+    local_value = value.astimezone(tz)
     month_names = [
         "janeiro",
         "fevereiro",

@@ -2,12 +2,25 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from bate_ponto_bot.utils import LOCAL_TIMEZONE, format_dt, format_seconds, utcnow
+from bate_ponto_bot.utils import (
+    DEFAULT_TIMEZONE,
+    format_dt,
+    format_seconds,
+    load_timezone,
+    utcnow,
+)
+
+# SQL expression for a time_entries row's local time zone.
+ENTRY_TIMEZONE_SQL = """COALESCE(
+    (SELECT gs.timezone FROM guild_settings gs WHERE gs.guild_id = time_entries.guild_id),
+    'America/Fortaleza'
+)"""
 
 
 def _calc_entry_worked_seconds(entry: dict[str, Any], at: datetime | None = None) -> int:
@@ -34,12 +47,35 @@ def _calc_entry_worked_seconds(entry: dict[str, Any], at: datetime | None = None
     return max(0, total_diff - pause_total)
 
 
-def _datetime_local_input(value: datetime | None) -> str:
+def _datetime_local_input(value: datetime | None, tz: ZoneInfo = DEFAULT_TIMEZONE) -> str:
     if value is None:
         return ""
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
-    return value.astimezone(LOCAL_TIMEZONE).strftime("%Y-%m-%dT%H:%M")
+    return value.astimezone(tz).strftime("%Y-%m-%dT%H:%M")
+
+
+def get_guild_timezones(conn: Connection, guild_ids: set[int]) -> dict[int, ZoneInfo]:
+    """Time zones for the given guilds; guilds without settings are left out."""
+    if not guild_ids:
+        return {}
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "SELECT guild_id, timezone FROM guild_settings WHERE guild_id = ANY(%s)",
+            (sorted(guild_ids),),
+        )
+        rows = list(cur.fetchall())
+    return {int(row["guild_id"]): load_timezone(row["timezone"]) for row in rows}
+
+
+def get_guild_timezone(conn: Connection, guild_id: int | None) -> ZoneInfo:
+    if guild_id is None:
+        return DEFAULT_TIMEZONE
+    return get_guild_timezones(conn, {guild_id}).get(guild_id, DEFAULT_TIMEZONE)
+
+
+def _row_timezones(conn: Connection, rows: list[dict[str, Any]]) -> dict[int, ZoneInfo]:
+    return get_guild_timezones(conn, {int(row["guild_id"]) for row in rows})
 
 
 def get_guilds(conn: Connection) -> list[dict[str, Any]]:
@@ -171,17 +207,19 @@ def get_active_entries(conn: Connection, guild_id: int | None = None) -> list[di
         rows = list(cur.fetchall())
 
     now = utcnow()
+    timezones = _row_timezones(conn, rows)
     results: list[dict[str, Any]] = []
     for row in rows:
         worked_sec = _calc_entry_worked_seconds(row, at=now)
+        tz = timezones.get(int(row["guild_id"]), DEFAULT_TIMEZONE)
         results.append(
             {
                 **row,
                 "worked_seconds": worked_sec,
                 "worked_formatted": format_seconds(worked_sec),
-                "started_at_formatted": format_dt(row["started_at"]),
+                "started_at_formatted": format_dt(row["started_at"], tz),
                 "pause_started_at_formatted": (
-                    format_dt(row["pause_started_at"]) if row.get("pause_started_at") else None
+                    format_dt(row["pause_started_at"], tz) if row.get("pause_started_at") else None
                 ),
             }
         )
@@ -275,8 +313,10 @@ def get_users_summary(
             u["current_status"] = entry["status"]
             u["open_entry_id"] = entry["id"]
 
+    timezones = _row_timezones(conn, entries)
     results: list[dict[str, Any]] = []
     for u in users_map.values():
+        tz = timezones.get(int(u["guild_id"]), DEFAULT_TIMEZONE)
         shifts = u["shifts_count"]
         w_sec = u["worked_seconds"]
         avg_sec = int(w_sec / shifts) if shifts > 0 else 0
@@ -288,8 +328,8 @@ def get_users_summary(
                 "worked_hours": round(w_sec / 3600, 2),
                 "pause_formatted": format_seconds(u["pause_seconds"]),
                 "avg_shift_formatted": format_seconds(avg_sec),
-                "first_started_at_formatted": format_dt(u["first_started_at"]),
-                "last_activity_at_formatted": format_dt(u["last_activity_at"]),
+                "first_started_at_formatted": format_dt(u["first_started_at"], tz),
+                "last_activity_at_formatted": format_dt(u["last_activity_at"], tz),
             }
         )
 
@@ -419,21 +459,23 @@ def get_user_entries(
         rows = list(cur.fetchall())
 
     now = utcnow()
+    timezones = _row_timezones(conn, rows)
     results: list[dict[str, Any]] = []
     for row in rows:
         w_sec = _calc_entry_worked_seconds(row, at=now)
+        tz = timezones.get(int(row["guild_id"]), DEFAULT_TIMEZONE)
         results.append(
             {
                 **row,
                 "worked_seconds": w_sec,
                 "worked_formatted": format_seconds(w_sec),
                 "pause_formatted": format_seconds(int(row["pause_total_seconds"] or 0)),
-                "started_at_formatted": format_dt(row["started_at"]),
-                "started_at_input": _datetime_local_input(row["started_at"]),
+                "started_at_formatted": format_dt(row["started_at"], tz),
+                "started_at_input": _datetime_local_input(row["started_at"], tz),
                 "ended_at_formatted": (
-                    format_dt(row["ended_at"]) if row.get("ended_at") else "Em andamento"
+                    format_dt(row["ended_at"], tz) if row.get("ended_at") else "Em andamento"
                 ),
-                "ended_at_input": _datetime_local_input(row.get("ended_at")),
+                "ended_at_input": _datetime_local_input(row.get("ended_at"), tz),
             }
         )
     return results
@@ -464,6 +506,7 @@ def get_user_weekly_totals(
         WITH entry_totals AS (
             SELECT
                 started_at,
+                {ENTRY_TIMEZONE_SQL} AS tz,
                 COALESCE(ended_at, now()) AS effective_end,
                 GREATEST(
                     1,
@@ -492,20 +535,16 @@ def get_user_weekly_totals(
                         EPOCH FROM (
                             LEAST(
                                 effective_end,
-                                (local_week + INTERVAL '7 days')
-                                    AT TIME ZONE 'America/Fortaleza'
+                                (local_week + INTERVAL '7 days') AT TIME ZONE tz
                             )
-                            - GREATEST(
-                                started_at,
-                                local_week AT TIME ZONE 'America/Fortaleza'
-                            )
+                            - GREATEST(started_at, local_week AT TIME ZONE tz)
                         )
                     )::BIGINT
                 ) AS overlap_seconds
             FROM entry_totals
             CROSS JOIN LATERAL generate_series(
-                date_trunc('week', started_at AT TIME ZONE 'America/Fortaleza'),
-                date_trunc('week', effective_end AT TIME ZONE 'America/Fortaleza'),
+                date_trunc('week', started_at AT TIME ZONE tz),
+                date_trunc('week', effective_end AT TIME ZONE tz),
                 INTERVAL '1 week'
             ) AS generated(local_week)
         )
@@ -591,18 +630,20 @@ def get_all_entries(
         rows = list(cur.fetchall())
 
     now = utcnow()
+    timezones = _row_timezones(conn, rows)
     results: list[dict[str, Any]] = []
     for row in rows:
         w_sec = _calc_entry_worked_seconds(row, at=now)
+        tz = timezones.get(int(row["guild_id"]), DEFAULT_TIMEZONE)
         results.append(
             {
                 **row,
                 "worked_seconds": w_sec,
                 "worked_formatted": format_seconds(w_sec),
                 "pause_formatted": format_seconds(int(row["pause_total_seconds"] or 0)),
-                "started_at_formatted": format_dt(row["started_at"]),
+                "started_at_formatted": format_dt(row["started_at"], tz),
                 "ended_at_formatted": (
-                    format_dt(row["ended_at"]) if row.get("ended_at") else "Em andamento"
+                    format_dt(row["ended_at"], tz) if row.get("ended_at") else "Em andamento"
                 ),
             }
         )
@@ -621,10 +662,13 @@ def get_entry_events(conn: Connection, entry_id: int) -> list[dict[str, Any]]:
         cur.execute(query, [entry_id])
         rows = list(cur.fetchall())
 
+    timezones = _row_timezones(conn, rows)
     return [
         {
             **row,
-            "occurred_at_formatted": format_dt(row["occurred_at"]),
+            "occurred_at_formatted": format_dt(
+                row["occurred_at"], timezones.get(int(row["guild_id"]), DEFAULT_TIMEZONE)
+            ),
         }
         for row in rows
     ]
@@ -658,10 +702,13 @@ def get_recent_events(
         cur.execute(query, params)
         rows = list(cur.fetchall())
 
+    timezones = _row_timezones(conn, rows)
     return [
         {
             **row,
-            "occurred_at_formatted": format_dt(row["occurred_at"]),
+            "occurred_at_formatted": format_dt(
+                row["occurred_at"], timezones.get(int(row["guild_id"]), DEFAULT_TIMEZONE)
+            ),
         }
         for row in rows
     ]

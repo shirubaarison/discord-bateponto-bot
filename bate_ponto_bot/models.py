@@ -6,6 +6,8 @@ from typing import Any
 
 import asyncpg
 
+from bate_ponto_bot.utils import DEFAULT_TIMEZONE_NAME
+
 
 @dataclass(frozen=True)
 class GuildSettings:
@@ -15,6 +17,7 @@ class GuildSettings:
     panel_message_id: int | None
     absence_tolerance_seconds: int
     control_message_ttl_seconds: int
+    timezone: str = DEFAULT_TIMEZONE_NAME
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,7 @@ def _settings_from_row(row: asyncpg.Record) -> GuildSettings:
         panel_message_id=_optional_int(row["panel_message_id"]),
         absence_tolerance_seconds=int(row["absence_tolerance_seconds"]),
         control_message_ttl_seconds=int(row["control_message_ttl_seconds"]),
+        timezone=row.get("timezone") or DEFAULT_TIMEZONE_NAME,
     )
 
 
