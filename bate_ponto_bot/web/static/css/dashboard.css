@@ -419,8 +419,6 @@ a.user-display-name:hover { color: var(--blue); text-decoration: underline !impo
 
 .btn-discord { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; min-height: 44px; text-decoration: none; }
 .btn-discord svg { width: 18px; height: 18px; }
-.login-divider { display: flex; align-items: center; gap: .75rem; margin-top: 1.5rem; color: var(--muted); font-size: .75rem; font-weight: 700; }
-.login-divider::before, .login-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .empty-guilds { max-width: 560px; margin: 3rem auto; text-align: center; }
 .empty-guilds p { margin-top: .6rem; color: var(--muted); }
 .empty-guilds-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: .75rem; margin-top: 1.5rem; }

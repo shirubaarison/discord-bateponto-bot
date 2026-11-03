@@ -6,14 +6,12 @@ from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from flask.testing import FlaskClient
-from werkzeug.security import generate_password_hash
-from werkzeug.test import TestResponse
 
 from bate_ponto_bot.config import Settings
 from bate_ponto_bot.web.app import create_app, parse_date_filters
 from bate_ponto_bot.web.queries import finish_active_entry, get_user_weekly_totals
 
-TEST_PASSWORD = "test-password"
+ADMIN_DISCORD_ID = 1
 
 
 def dashboard_settings(**overrides: object) -> Settings:
@@ -22,8 +20,9 @@ def dashboard_settings(**overrides: object) -> Settings:
         "database_url": "postgresql://user:pass@localhost:5432/db",
         "postgres_host": None,
         "dashboard_secret_key": "test-secret-key-that-is-longer-than-32-characters",
-        "dashboard_username": "Admin",
-        "dashboard_password_hash": generate_password_hash(TEST_PASSWORD),
+        "discord_client_id": 123,
+        "discord_client_secret": "client-secret",
+        "dashboard_admin_discord_ids": str(ADMIN_DISCORD_ID),
         "dashboard_secure_cookies": False,
         "dashboard_proxy_fix": False,
     }
@@ -31,20 +30,12 @@ def dashboard_settings(**overrides: object) -> Settings:
     return Settings(_env_file=None, **values)  # type: ignore[call-arg]
 
 
-def login(
-    client: FlaskClient, *, password: str = TEST_PASSWORD, next_target: str | None = None
-) -> TestResponse:
-    login_page = client.get("/login")
-    csrf_match = re.search(r'name="csrf_token" value="([^"]+)"', login_page.text)
-    assert csrf_match is not None
-    data = {
-        "csrf_token": csrf_match.group(1),
-        "username": "Admin",
-        "password": password,
-    }
-    if next_target is not None:
-        data["next"] = next_target
-    return client.post("/login", data=data)
+def login(client: FlaskClient) -> None:
+    """Start a session as the admin Discord account (the OAuth flow has its own tests)."""
+    with client.session_transaction() as session:
+        session["auth_kind"] = "discord"
+        session["discord_user_id"] = ADMIN_DISCORD_ID
+        session["dashboard_user"] = "Admin"
 
 
 def test_parse_date_filters_presets() -> None:
@@ -169,6 +160,7 @@ def test_flask_app_routes() -> None:
 
     with (
         patch("bate_ponto_bot.web.app.get_db") as mock_get_db,
+        patch("bate_ponto_bot.web.app.get_dashboard_user_guild_ids", return_value=set()),
         patch(
             "bate_ponto_bot.web.app.get_guilds",
             return_value=[{"guild_id": 111}, {"guild_id": 333}],
@@ -221,9 +213,7 @@ def test_flask_app_routes() -> None:
         assert client.get("/export/entries").status_code == 302
         assert client.get("/api/entries/10/events").status_code == 302
 
-        res_login = login(client)
-        assert res_login.status_code == 302
-        assert res_login.headers["Location"] == "/"
+        login(client)
 
         # 2. Test Index route
         res = client.get("/")
@@ -308,43 +298,6 @@ def test_flask_app_routes() -> None:
         assert client.get("/").status_code == 302
 
 
-def test_dashboard_login_rejects_invalid_credentials_and_csrf() -> None:
-    app = create_app(dashboard_settings())
-    app.config["TESTING"] = True
-    client = app.test_client()
-
-    invalid_credentials = login(client, password="wrong-password")
-    assert invalid_credentials.status_code == 401
-    assert "Usuário ou senha inválidos." in invalid_credentials.text
-
-    invalid_csrf = client.post(
-        "/login",
-        data={
-            "csrf_token": "invalid",
-            "username": "Admin",
-            "password": TEST_PASSWORD,
-        },
-    )
-    assert invalid_csrf.status_code == 400
-
-
-def test_dashboard_login_rate_limit_and_safe_redirect() -> None:
-    app = create_app(dashboard_settings(dashboard_login_max_attempts=2))
-    app.config["TESTING"] = True
-    client = app.test_client()
-
-    assert login(client, password="wrong-password").status_code == 401
-    assert login(client, password="wrong-password").status_code == 401
-    assert login(client, password="wrong-password").status_code == 429
-
-    redirect_app = create_app(dashboard_settings())
-    redirect_app.config["TESTING"] = True
-    fresh_client = redirect_app.test_client()
-    authenticated = login(fresh_client, next_target="https://example.com/phishing")
-    assert authenticated.status_code == 302
-    assert authenticated.headers["Location"] == "/"
-
-
 def test_dashboard_rejects_insecure_auth_configuration() -> None:
     settings = Settings(
         _env_file=None,  # type: ignore[call-arg]
@@ -356,7 +309,7 @@ def test_dashboard_rejects_insecure_auth_configuration() -> None:
     try:
         create_app(settings)
     except ValueError as error:
-        assert "DASHBOARD_USERNAME" in str(error)
+        assert "DISCORD_CLIENT_ID" in str(error)
     else:
         raise AssertionError("Dashboard accepted missing authentication settings")
 
@@ -365,7 +318,7 @@ def test_dashboard_sets_secure_session_cookie() -> None:
     app = create_app(dashboard_settings(dashboard_secure_cookies=True))
     app.config["TESTING"] = True
 
-    response = app.test_client().get("/login")
+    response = app.test_client().get("/auth/discord")
     cookie = response.headers["Set-Cookie"]
 
     assert "Secure" in cookie

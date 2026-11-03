@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install env secret hash db migrate seed bot dashboard up down logs lint format test check
+.PHONY: help install env secret db migrate seed bot dashboard up down logs lint format test check
 
 help: ## Lista os comandos disponíveis
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -12,9 +12,6 @@ env: ## Cria o .env a partir do .env.example (se ainda não existir)
 
 secret: ## Gera um valor para DASHBOARD_SECRET_KEY
 	@openssl rand -hex 32
-
-hash: ## Gera DASHBOARD_PASSWORD_HASH de forma interativa
-	@uv run python scripts/hash_password.py
 
 db: ## Sobe o PostgreSQL local
 	docker compose up -d postgres

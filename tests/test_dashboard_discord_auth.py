@@ -194,14 +194,27 @@ def test_discord_callback_rejects_invalid_state() -> None:
         assert client.get("/").status_code == 302
 
 
-def test_discord_only_configuration_disables_password_login() -> None:
+def test_login_page_only_offers_discord() -> None:
     client = make_app().test_client()
 
     page = client.get("/login")
     assert page.status_code == 200
     assert "Entrar com Discord" in page.text
     assert 'name="password"' not in page.text
-    assert client.post("/login", data={"username": "x", "password": "y"}).status_code == 404
+    # Posting credentials no longer logs anyone in.
+    assert client.post("/login", data={"username": "x", "password": "y"}).status_code != 200
+    assert client.get("/").status_code == 302
+
+
+def test_discord_login_ignores_external_next_target() -> None:
+    client = make_app().test_client()
+    with dashboard_mocks({OWN_GUILD}):
+        start = client.get("/auth/discord?next=https://example.com/phishing")
+        state = parse_qs(urlsplit(start.headers["Location"]).query)["state"][0]
+
+        callback = client.get(f"/auth/discord/callback?code=abc&state={state}")
+        assert callback.status_code == 302
+        assert callback.headers["Location"] == "/"
 
 
 def test_admin_discord_account_sees_every_guild() -> None:

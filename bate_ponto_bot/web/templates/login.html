@@ -24,35 +24,17 @@
                 <span>Bate-Ponto</span>
             </div>
             <h1 id="login-title">Acesse o painel</h1>
-            <p>{% if discord_login_enabled %}Entre com sua conta do Discord para ver os servidores que você gerencia.{% else %}Entre com suas credenciais de administração.{% endif %}</p>
+            <p>Entre com sua conta do Discord para ver os servidores que você gerencia.</p>
 
             {% if error %}
             <div class="login-error" role="alert">{{ error }}</div>
             {% endif %}
 
-            {% if discord_login_enabled %}
             <div class="login-form">
                 <a href="{{ url_for('discord_login', next=next_target) }}" class="btn btn-primary btn-discord">
                     <i data-lucide="log-in"></i> Entrar com Discord
                 </a>
             </div>
-            {% endif %}
-
-            {% if password_login_enabled %}
-            {% if discord_login_enabled %}<div class="login-divider"><span>ou acesso administrativo</span></div>{% endif %}
-            <form method="POST" action="{{ url_for('login') }}" class="login-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                {% if next_target %}<input type="hidden" name="next" value="{{ next_target }}">{% endif %}
-
-                <label for="username">Usuário</label>
-                <input class="input-control" id="username" name="username" type="text" autocomplete="username" maxlength="256" required{% if not discord_login_enabled %} autofocus{% endif %}>
-
-                <label for="password">Senha</label>
-                <input class="input-control" id="password" name="password" type="password" autocomplete="current-password" maxlength="1024" required>
-
-                <button type="submit" class="btn {% if discord_login_enabled %}btn-secondary{% else %}btn-primary{% endif %}">Entrar</button>
-            </form>
-            {% endif %}
         </section>
     </main>
     <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>

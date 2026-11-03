@@ -3,11 +3,8 @@ from __future__ import annotations
 import hmac
 import logging
 import secrets
-import time as time_module
-from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
-from threading import Lock
 from typing import Any
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
@@ -26,7 +23,6 @@ from flask import (
 )
 from psycopg.rows import dict_row
 from werkzeug.middleware.proxy_fix import ProxyFix
-from werkzeug.security import check_password_hash
 
 from bate_ponto_bot.config import Settings
 from bate_ponto_bot.utils import DEFAULT_TIMEZONE
@@ -72,7 +68,6 @@ OAUTH_NEXT_SESSION_KEY = "oauth_next"
 CSRF_SESSION_KEY = "csrf_token"
 DEFAULT_SECRET_KEY = "bate-ponto-secret-key-change-in-prod"
 EXAMPLE_SECRET_KEY = "gere-uma-chave-aleatoria-com-pelo-menos-32-caracteres"
-MAX_TRACKED_LOGIN_CLIENTS = 2048
 
 
 @dataclass(frozen=True)
@@ -195,30 +190,13 @@ def create_app(settings: Settings | None = None) -> Flask:
     app = Flask(__name__)
     app_settings = settings or Settings()
 
-    dashboard_username = (app_settings.dashboard_username or "").strip()
-    dashboard_password_hash = (app_settings.dashboard_password_hash or "").strip()
-    discord_client_id = app_settings.discord_client_id
     discord_client_secret = (app_settings.discord_client_secret or "").strip()
-    password_login_enabled = bool(dashboard_username or dashboard_password_hash)
-    discord_login_enabled = bool(discord_client_id or discord_client_secret)
-    admin_discord_ids = app_settings.admin_discord_ids
-
-    if not password_login_enabled and not discord_login_enabled:
+    if not app_settings.discord_client_id or not discord_client_secret:
         raise ValueError(
-            "Configure Discord login (DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET) and/or "
-            "DASHBOARD_USERNAME and DASHBOARD_PASSWORD_HASH before starting the dashboard."
+            "Configure DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET before starting the dashboard."
         )
-    if password_login_enabled:
-        if not dashboard_username or not dashboard_password_hash:
-            raise ValueError("Configure both DASHBOARD_USERNAME and DASHBOARD_PASSWORD_HASH.")
-        if not dashboard_password_hash.startswith(("scrypt:", "pbkdf2:")):
-            raise ValueError("DASHBOARD_PASSWORD_HASH must be a Werkzeug scrypt or PBKDF2 hash.")
-        try:
-            check_password_hash(dashboard_password_hash, "")
-        except ValueError as error:
-            raise ValueError("DASHBOARD_PASSWORD_HASH is not a valid password hash.") from error
-    if discord_login_enabled and (not discord_client_id or not discord_client_secret):
-        raise ValueError("Configure both DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET.")
+    discord_client_id: int = app_settings.discord_client_id
+    admin_discord_ids = app_settings.admin_discord_ids
     if (
         app_settings.dashboard_secret_key in {DEFAULT_SECRET_KEY, EXAMPLE_SECRET_KEY}
         or len(app_settings.dashboard_secret_key) < 32
@@ -246,9 +224,6 @@ def create_app(settings: Settings | None = None) -> Flask:
 
     app.teardown_appcontext(close_db)
 
-    failed_logins: dict[str, deque[float]] = {}
-    failed_logins_lock = Lock()
-
     def csrf_token() -> str:
         token = session.get(CSRF_SESSION_KEY)
         if not isinstance(token, str):
@@ -263,49 +238,20 @@ def create_app(settings: Settings | None = None) -> Flask:
             supplied_csrf, str(expected_csrf)
         )
 
-    def login_client_key() -> str:
-        return request.remote_addr or "unknown"
-
-    def reserve_login_attempt(client_key: str) -> bool:
-        with failed_logins_lock:
-            if client_key not in failed_logins and len(failed_logins) >= MAX_TRACKED_LOGIN_CLIENTS:
-                failed_logins.pop(next(iter(failed_logins)))
-            attempts = failed_logins.setdefault(client_key, deque())
-            now = time_module.monotonic()
-            cutoff = now - app_settings.dashboard_login_window_seconds
-            while attempts and attempts[0] < cutoff:
-                attempts.popleft()
-            if len(attempts) >= app_settings.dashboard_login_max_attempts:
-                return False
-            attempts.append(now)
-            return True
-
-    def clear_login_attempts(client_key: str) -> None:
-        with failed_logins_lock:
-            failed_logins.pop(client_key, None)
-
     def current_viewer() -> Viewer | None:
         if "viewer" in g:
             return g.viewer
 
         viewer: Viewer | None = None
-        kind = session.get(AUTH_KIND_SESSION_KEY)
-        name = str(session.get(AUTH_SESSION_KEY, ""))
-        if kind == "admin" and password_login_enabled:
-            if _constant_time_text_equal(name, dashboard_username):
-                viewer = Viewer(name=dashboard_username)
-        elif kind == "discord" and discord_login_enabled:
-            discord_user_id = session.get(DISCORD_USER_SESSION_KEY)
-            if isinstance(discord_user_id, int):
-                guild_ids = get_dashboard_user_guild_ids(get_db(), discord_user_id)
-                if guild_ids is not None:
-                    viewer = Viewer(
-                        name=name,
-                        discord_user_id=discord_user_id,
-                        guild_ids=(
-                            None if discord_user_id in admin_discord_ids else frozenset(guild_ids)
-                        ),
-                    )
+        discord_user_id = session.get(DISCORD_USER_SESSION_KEY)
+        if session.get(AUTH_KIND_SESSION_KEY) == "discord" and isinstance(discord_user_id, int):
+            guild_ids = get_dashboard_user_guild_ids(get_db(), discord_user_id)
+            if guild_ids is not None:
+                viewer = Viewer(
+                    name=str(session.get(AUTH_SESSION_KEY, "")),
+                    discord_user_id=discord_user_id,
+                    guild_ids=None if discord_user_id in admin_discord_ids else frozenset(guild_ids),
+                )
 
         g.viewer = viewer
         return viewer
@@ -374,11 +320,7 @@ def create_app(settings: Settings | None = None) -> Flask:
             "csrf_token": csrf_token,
             "viewer": viewer,
             "authenticated_username": viewer.name if viewer else None,
-            "password_login_enabled": password_login_enabled,
-            "discord_login_enabled": discord_login_enabled,
-            "bot_invite_url": (
-                build_bot_invite_url(discord_client_id) if discord_client_id else None
-            ),
+            "bot_invite_url": build_bot_invite_url(discord_client_id),
         }
 
     @app.before_request
@@ -424,60 +366,14 @@ def create_app(settings: Settings | None = None) -> Flask:
         response.headers.setdefault("X-Frame-Options", "DENY")
         return response
 
-    @app.route("/login", methods=["GET", "POST"])
-    def login() -> str | Response | tuple[str, int]:
+    @app.get("/login")
+    def login() -> str | Response:
         if current_viewer() is not None:
             return redirect(url_for("index"))
-
-        error: str | None = None
-        status = 200
-        next_target = _safe_redirect_target(request.values.get("next"))
-
-        if request.method == "POST":
-            if not password_login_enabled:
-                abort(404)
-            supplied_csrf = request.form.get("csrf_token", "")
-            expected_csrf = session.get(CSRF_SESSION_KEY, "")
-            if not expected_csrf or not _constant_time_text_equal(
-                supplied_csrf, str(expected_csrf)
-            ):
-                return render_template(
-                    "login.html", error="Sessão inválida. Recarregue a página."
-                ), 400
-
-            client_key = login_client_key()
-            if not reserve_login_attempt(client_key):
-                return (
-                    render_template(
-                        "login.html",
-                        error="Muitas tentativas. Aguarde alguns minutos e tente novamente.",
-                    ),
-                    429,
-                )
-
-            supplied_username = request.form.get("username", "")[:256]
-            supplied_password = request.form.get("password", "")[:1024]
-            username_matches = _constant_time_text_equal(supplied_username, dashboard_username)
-            password_matches = check_password_hash(dashboard_password_hash, supplied_password)
-
-            if username_matches and password_matches:
-                clear_login_attempts(client_key)
-                session.clear()
-                session[AUTH_KIND_SESSION_KEY] = "admin"
-                session[AUTH_SESSION_KEY] = dashboard_username
-                session.permanent = True
-                csrf_token()
-                return redirect(next_target or url_for("index"))
-
-            error = "Usuário ou senha inválidos."
-            status = 401
-
-        return render_login(error, next_target), status
+        return render_login(next_target=_safe_redirect_target(request.args.get("next")))
 
     @app.get("/auth/discord")
     def discord_login() -> Response:
-        if not discord_login_enabled or discord_client_id is None:
-            abort(404)
         state = secrets.token_urlsafe(32)
         session[OAUTH_STATE_SESSION_KEY] = state
         session[OAUTH_NEXT_SESSION_KEY] = _safe_redirect_target(request.args.get("next"))
@@ -485,9 +381,6 @@ def create_app(settings: Settings | None = None) -> Flask:
 
     @app.get("/auth/discord/callback")
     def discord_callback() -> Response | tuple[str, int]:
-        if not discord_login_enabled or discord_client_id is None:
-            abort(404)
-
         expected_state = session.pop(OAUTH_STATE_SESSION_KEY, None)
         next_target = _safe_redirect_target(session.pop(OAUTH_NEXT_SESSION_KEY, None))
         supplied_state = request.args.get("state", "")

@@ -20,7 +20,7 @@ Python 3.11+ · discord.py · PostgreSQL · Flask · Docker Compose
 - Histórico individual e linha do tempo de eventos de cada ponto.
 - Exportação para CSV compatível com Excel (UTF-8 BOM).
 - Login com Discord: cada pessoa vê apenas os servidores em que tem `Gerenciar Servidor`.
-- Acesso administrativo opcional com senha em hash, proteção CSRF, limite de tentativas e cabeçalhos de segurança.
+- Super-admins definidos por ID do Discord veem todos os servidores; proteção CSRF e cabeçalhos de segurança.
 
 ## Início rápido (Docker)
 
@@ -28,17 +28,12 @@ Python 3.11+ · discord.py · PostgreSQL · Flask · Docker Compose
 git clone <url-do-repositorio> && cd bate-ponto-discord
 make env        # cria o .env
 make secret     # copie o resultado para DASHBOARD_SECRET_KEY
-make hash       # opcional: acesso admin com senha; copie a linha gerada para o .env
 # edite o .env: DISCORD_TOKEN, POSTGRES_PASSWORD, DISCORD_CLIENT_ID/SECRET/REDIRECT_URI
 make up         # sobe banco, migrações, bot e dashboard
 ```
 
 O dashboard fica em `http://127.0.0.1:5000`. Em produção, coloque-o atrás de um proxy reverso com
 HTTPS; sem HTTPS, defina `DASHBOARD_SECURE_COOKIES=false` (apenas para testes locais).
-
-> `make hash` usa `uv`. Sem ele, gere o hash com
-> `python -c 'from getpass import getpass; from werkzeug.security import generate_password_hash as g; print(g(getpass()))'`
-> e mantenha aspas simples ao redor do valor no `.env` por causa dos `$`.
 
 ### Criando o bot no Discord
 
@@ -60,8 +55,7 @@ mostra os servidores em que ela é dona, administradora ou tem `Gerenciar Servid
 já foi configurado (`/config ...`). As permissões do Discord são relidas a cada login.
 Quem não tem nenhum servidor vê um link para adicionar o bot.
 
-O login com usuário e senha (`DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD_HASH`) continua disponível
-como acesso administrativo e vê todos os servidores.
+Contas listadas em `DASHBOARD_ADMIN_DISCORD_IDS` são super-admins e veem todos os servidores.
 
 ### Configurando no servidor
 
@@ -128,9 +122,6 @@ Roteiro para ver contas, servidores vinculados e fusos horários funcionando na 
    # Opcional: comandos slash aparecem na hora neste servidor
    DEV_GUILD_ID=<id do seu servidor de testes>
    ```
-
-   Remova ou comente `DASHBOARD_USERNAME` e `DASHBOARD_PASSWORD_HASH` para testar só com
-   Discord, ou mantenha-os para ter também o acesso administrativo.
 3. **Suba tudo**: `make install`, `make db`, `make migrate` e, em dois terminais, `make bot` e
    `make dashboard`.
 4. **Configure o servidor de testes** (em que você tem `Gerenciar Servidor`): convide o bot,
@@ -163,17 +154,16 @@ inicialização. O [`.env.example`](.env.example) documenta cada uma.
 | `DISCORD_TOKEN` | Token do bot (obrigatório) |
 | `POSTGRES_*` / `DATABASE_URL` | Conexão com o banco. `POSTGRES_HOST` tem prioridade sobre `DATABASE_URL` |
 | `DASHBOARD_SECRET_KEY` | Chave de sessão, com 32+ caracteres (obrigatória) |
-| `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | Login com Discord (OAuth2) |
+| `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | Login com Discord (OAuth2, obrigatório) |
 | `DISCORD_REDIRECT_URI` | URL de retorno do OAuth2 cadastrada no Developer Portal |
 | `DASHBOARD_URL` | Endereço público do dashboard, citado na mensagem de boas-vindas (opcional) |
 | `DASHBOARD_ADMIN_DISCORD_IDS` | IDs de usuário do Discord, separados por vírgula, que veem todos os servidores |
-| `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD_HASH` | Acesso administrativo com senha (opcional) |
 | `DASHBOARD_SECURE_COOKIES` | `true` exige HTTPS |
 | `DASHBOARD_PROXY_FIX` | `true` quando atrás de proxy reverso |
 | `DEV_GUILD_ID` | Sincroniza comandos slash em um único servidor |
 
-O dashboard recusa iniciar sem uma chave de sessão segura e sem ao menos um login configurado
-(Discord ou usuário e senha).
+O dashboard recusa iniciar sem uma chave de sessão segura e sem `DISCORD_CLIENT_ID` e
+`DISCORD_CLIENT_SECRET`.
 
 ## Estrutura
 
@@ -184,7 +174,6 @@ bate_ponto_bot/
 └── web/                            # dashboard Flask (app, queries, CSV, templates)
 migrations/                         # Alembic
 tests/                              # pytest
-scripts/hash_password.py            # gerador do hash de senha
 scripts/seed_demo.py                # pontos de exemplo para testar o dashboard
 ```
 
