@@ -175,22 +175,45 @@ bate_ponto_bot/
 migrations/                         # Alembic
 tests/                              # pytest
 scripts/seed_demo.py                # pontos de exemplo para testar o dashboard
+scripts/deploy.sh                   # deploy na VM (usado pela pipeline)
 ```
 
 ## CI/CD
 
 Pull requests e pushes em `main` rodam lint, testes e validação do Docker Compose. Um push em
-`main` pode também fazer deploy por um runner auto-hospedado instalado na VM, sem guardar chave
-SSH no GitHub nem expor porta SSH.
+`main` também faz deploy: um runner do GitHub entra na VM por SSH e roda
+[`scripts/deploy.sh`](scripts/deploy.sh) (fetch, build, migrações, containers e `/healthz`).
 
-1. Crie o ambiente `production` em **Settings → Environments**, com revisor obrigatório, e proteja a `main` exigindo o check `Tests and quality`.
-2. Em **Settings → Secrets and variables → Actions → Variables**, defina:
-   - `DEPLOY_PATH`: diretório do projeto na VM (por exemplo `/opt/bate-ponto`);
-   - `PRODUCTION_URL`: URL pública do dashboard.
-3. Na VM, registre o runner com o label `production` (**Settings → Actions → Runners → New self-hosted runner**) e instale-o como serviço (`sudo ./svc.sh install && sudo ./svc.sh start`).
-4. Mantenha o `.env` de produção apenas na VM, dentro de `DEPLOY_PATH`; a pipeline nunca o cria nem o altera.
+1. Crie o ambiente `production` em **Settings → Environments**, com revisor obrigatório, e proteja
+   a `main` exigindo o check `Tests and quality`.
+2. **Na VM**, crie uma chave só para o deploy e autorize-a no usuário que roda o Docker:
 
-O deploy executa build, migrações, atualização dos containers e verifica `/healthz`.
+   ```bash
+   ssh-keygen -t ed25519 -f ~/github-deploy -N "" -C github-deploy
+   cat ~/github-deploy.pub >> ~/.ssh/authorized_keys
+   cat ~/github-deploy            # conteúdo de DEPLOY_SSH_KEY
+   rm ~/github-deploy ~/github-deploy.pub
+   ```
+
+   No GCP, se a VM usa OS Login (`enable-oslogin=TRUE`), o `authorized_keys` é ignorado: cadastre
+   a chave pública nos metadados da instância ou desative o OS Login.
+3. **Na sua máquina**, capture a chave do host e confira a impressão digital com a da VM
+   (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`):
+
+   ```bash
+   ssh-keyscan -t ed25519 <ip-da-vm>   # conteúdo de DEPLOY_KNOWN_HOSTS
+   ```
+4. Em **Settings → Environments → production**, cadastre:
+   - **Secrets:** `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST` (IP ou domínio da VM) e
+     `DEPLOY_USER`;
+   - **Variables:** `DEPLOY_PATH` (clone do projeto na VM, por exemplo `/opt/bate-ponto`),
+     `PRODUCTION_URL` e, se o SSH não usa a porta 22, `DEPLOY_PORT`.
+5. Libere a porta SSH no firewall da VM. Os runners do GitHub usam muitos IPs, então na prática a
+   porta fica aberta para a internet: mantenha login só por chave (`PasswordAuthentication no`).
+6. Mantenha o `.env` de produção apenas na VM, dentro de `DEPLOY_PATH`; a pipeline nunca o cria nem
+   o altera.
+
+Para um deploy manual, rode `bash scripts/deploy.sh <DEPLOY_PATH>` na VM.
 
 ## Regra de ausência
 
