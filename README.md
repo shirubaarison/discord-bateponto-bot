@@ -1,10 +1,7 @@
 # Bate-Ponto Discord
 
 Controle de ponto direto no Discord, com um painel web onde gestores acompanham as horas da equipe,
-corrigem registros e exportam relatórios. Está em produção, usado por servidores reais, com deploy
-automático a cada push na `main`.
-
-**Python 3.11+ · discord.py · PostgreSQL · Flask · Alembic · Docker Compose · GitHub Actions · Cloudflare Tunnel**
+corrigem registros e exportam relatórios.
 
 <p align="center">
   <img src="docs/images/dashboard-visao-geral.png" alt="Visão geral do dashboard" width="900">
@@ -187,16 +184,6 @@ scripts/seed_demo.py                # dados de exemplo para o dashboard
 scripts/deploy.sh                   # script de deploy rodado na VM pela CI
 docs/deployment.md                  # configuração da CI/CD e do Cloudflare Tunnel
 ```
-
-## Decisões de projeto
-
-- **Por que os avisos automáticos vão por DM?** O Discord só permite mensagens privadas no canal
-  como respostas efêmeras a uma interação. Um aviso disparado pela saída de um canal de voz não tem
-  interação para responder, então vai por DM.
-- **Por que encerrar no horário limite, e não quando a pessoa volta?** Assim as horas ficam
-  honestas: o tempo fora do canal de voz além da tolerância nunca é contado.
-- **Fuso por servidor.** Os horários são guardados como `timestamptz` e convertidos só na exibição,
-  então os filtros "Hoje" e "Este Mês" funcionam para servidores em fusos diferentes.
 
 ## Licença
 
