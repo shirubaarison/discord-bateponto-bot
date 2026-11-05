@@ -1,68 +1,119 @@
 # Bate-Ponto Discord
 
-Controle de ponto direto no Discord, com painel web para acompanhar as horas da equipe.
+Controle de ponto direto no Discord, com um painel web onde gestores acompanham as horas da equipe,
+corrigem registros e exportam relatórios. Está em produção, usado por servidores reais, com deploy
+automático a cada push na `main`.
 
-Python 3.11+ · discord.py · PostgreSQL · Flask · Docker Compose
+**Python 3.11+ · discord.py · PostgreSQL · Flask · Alembic · Docker Compose · GitHub Actions · Cloudflare Tunnel**
+
+<p align="center">
+  <img src="docs/images/dashboard-visao-geral.png" alt="Visão geral do dashboard" width="900">
+</p>
+
+## Capturas de tela
+
+| Painel no Discord | Resposta privada ao iniciar o ponto |
+| --- | --- |
+| ![Painel com os botões de ponto](docs/images/discord-painel.png) | ![Ponto iniciado, visível só para quem clicou](docs/images/discord-ponto-iniciado.png) |
+
+| Canal de auditoria | Histórico do colaborador |
+| --- | --- |
+| ![Logs de ponto iniciado e finalizado](docs/images/discord-auditoria.png) | ![Página do colaborador com horas por semana](docs/images/dashboard-colaborador.png) |
+
+<p align="center">
+  <img src="docs/images/dashboard-auditoria.png" alt="Registro de eventos e auditoria" width="900">
+</p>
 
 ## O que faz
 
-**Bot**
+### Bot
 
-- Painel com botões para iniciar, finalizar, pausar/retomar, ver status e histórico (respostas privadas).
-- Início e retomada permitidos apenas em canais de voz configurados.
-- Tolerância de ausência ajustável: se a pessoa sai do canal de voz e não volta a tempo, o ponto é encerrado no horário limite e ela recebe um aviso por DM.
-- Pontos ativos ou em pausa por mais de 24 horas são encerrados automaticamente.
-- Canal de auditoria para logs e configuração por servidor via comandos slash.
+- **Ponto em um clique.** Um painel fixo tem botões para iniciar, finalizar, pausar/retomar, ver o
+  status e o histórico. Todas as respostas são efêmeras: só quem clicou vê.
+- **Regras de presença.** Só dá para iniciar ou retomar o ponto estando em um canal de voz
+  permitido. Se a pessoa sai do canal e não volta dentro da tolerância, o ponto é encerrado no
+  horário limite e ela recebe um aviso por DM.
+- **Autocorreção.** Pontos ativos ou pausados há mais de 24 horas são encerrados automaticamente.
+- **Auditoria no Discord.** Cada início e fim de ponto vai para um canal de logs, com tempo
+  trabalhado, tempo pausado e total da semana.
+- **Configuração por servidor** com comandos `/config`: canal do painel, canal de logs, canais de
+  voz permitidos, tolerância, fuso horário e limpeza automática do canal do painel.
+- **Boas-vindas.** Ao entrar em um servidor, o bot envia os passos de configuração.
 
-**Dashboard web**
+### Dashboard web
 
-- Métricas gerais, colaboradores trabalhando agora e desempenho por pessoa, com filtros de período.
-- Histórico individual e linha do tempo de eventos de cada ponto.
-- Exportação para CSV compatível com Excel (UTF-8 BOM).
-- Login com Discord: cada pessoa vê apenas os servidores em que tem `Gerenciar Servidor`.
-- Super-admins definidos por ID do Discord veem todos os servidores; proteção CSRF e cabeçalhos de segurança.
+- **Login com Discord (OAuth2).** Cada pessoa vê só os servidores em que é dona ou tem
+  `Gerenciar Servidor`, e as permissões são relidas a cada login. Super-admins, definidos por ID
+  do Discord, veem todos os servidores.
+- **Visão geral da equipe:** quem está trabalhando agora, totais por pessoa e horas por semana, com
+  filtros de período que seguem o fuso de cada servidor.
+- **Histórico individual** e linha do tempo de eventos de cada ponto.
+- **Correção de registros.** Gestores podem editar ou encerrar pontos, e cada alteração fica salva
+  numa tabela de auditoria com os valores de antes e depois.
+- **Exportação CSV** (resumo, registros e por pessoa) com UTF-8 BOM, para abrir certo no Excel.
+- **Segurança:** proteção CSRF, cabeçalhos de segurança, cookies seguros, e o dashboard se recusa a
+  iniciar sem uma chave de sessão forte.
+
+## Arquitetura
+
+```
+           Gateway do Discord                      Navegador
+                  │                                    │  HTTPS
+                  ▼                                    ▼
+ ┌────────────────────────────┐            Cloudflare Tunnel
+ │  bot  (discord.py, async)  │                       │
+ │  comandos slash, botões,   │                       ▼
+ │  monitor de canais de voz  │       ┌───────────────────────────────┐
+ └─────────────┬──────────────┘       │ dashboard (Flask + gunicorn)  │
+               │ asyncpg              │ OAuth2 do Discord, CSV        │
+               ▼                      └───────────────┬───────────────┘
+        ┌──────────────┐                              │ psycopg
+        │ PostgreSQL 16│◄─────────────────────────────┘
+        └──────────────┘   esquema versionado com Alembic
+```
+
+O bot e o dashboard são processos separados, gerados da mesma imagem, e compartilham só o banco. A
+VM não expõe nenhuma porta: o dashboard e o SSH do deploy passam por um Cloudflare Tunnel.
+
+### CI/CD
+
+Todo pull request e push roda Ruff, a suíte do pytest e uma validação do Docker Compose. Um push na
+`main` também faz o deploy: um runner do GitHub entra na VM por SSH através do túnel, autenticado
+com um service token do Cloudflare Access, e roda [`scripts/deploy.sh`](scripts/deploy.sh) (fetch,
+build, migrações, containers e verificação do `/healthz`). O `.env` de produção fica só na VM e
+nunca passa pela CI.
+
+O passo a passo de configuração está em [`docs/deployment.md`](docs/deployment.md).
 
 ## Início rápido (Docker)
 
 ```bash
-git clone <url-do-repositorio> && cd bate-ponto-discord
-make env        # cria o .env
+git clone https://github.com/shirubaarison/discord-bateponto-bot && cd discord-bateponto-bot
+make env        # cria o .env a partir do .env.example
 make secret     # copie o resultado para DASHBOARD_SECRET_KEY
 # edite o .env: DISCORD_TOKEN, POSTGRES_PASSWORD, DISCORD_CLIENT_ID/SECRET/REDIRECT_URI
-make up         # sobe banco, migrações, bot e dashboard
+make up         # sobe o banco, roda as migrações e sobe bot e dashboard
 ```
 
-O dashboard fica em `http://127.0.0.1:5000`. Em produção, coloque-o atrás de um proxy reverso com
-HTTPS; sem HTTPS, defina `DASHBOARD_SECURE_COOKIES=false` (apenas para testes locais).
+O dashboard fica em `http://127.0.0.1:5000`. Em produção, coloque-o atrás de HTTPS. Para testar
+localmente via HTTP, defina `DASHBOARD_SECURE_COOKIES=false`.
 
-### Criando o bot no Discord
+### Criando a aplicação no Discord
 
-1. Em [Discord Developer Portal](https://discord.com/developers/applications), crie uma aplicação e adicione um Bot.
-2. Copie o token para `DISCORD_TOKEN`. Nenhum privileged intent é necessário.
-3. Convide o bot com os escopos `bot` e `applications.commands`.
-4. Permissões mínimas:
-   - Canal do painel: `View Channel`, `Send Messages`, `Manage Messages`.
-   - Canal de logs: `View Channel`, `Send Messages`.
-   - Canais de voz permitidos: `View Channel`.
-5. Para o login com Discord, em **OAuth2** copie `Client ID` e `Client Secret` para
-   `DISCORD_CLIENT_ID` e `DISCORD_CLIENT_SECRET` e adicione o redirect
-   `https://<seu-dashboard>/auth/discord/callback` (igual a `DISCORD_REDIRECT_URI`).
+1. No [Discord Developer Portal](https://discord.com/developers/applications), crie uma aplicação e
+   adicione um bot. Nenhum privileged intent é necessário.
+2. Copie o token do bot para `DISCORD_TOKEN`.
+3. Em **OAuth2**, copie o Client ID e o Client Secret para `DISCORD_CLIENT_ID` /
+   `DISCORD_CLIENT_SECRET` e adicione o redirect `https://<seu-dashboard>/auth/discord/callback`
+   (o mesmo valor de `DISCORD_REDIRECT_URI`).
+4. Convide o bot com os escopos `bot` e `applications.commands`. Permissões mínimas:
+   - Canal do painel: `View Channel`, `Send Messages`, `Manage Messages`
+   - Canal de logs: `View Channel`, `Send Messages`
+   - Canais de voz permitidos: `View Channel`
 
-### Contas do dashboard
+### Configurando um servidor
 
-Qualquer pessoa pode entrar com a conta do Discord; a conta é criada no primeiro login. O painel
-mostra os servidores em que ela é dona, administradora ou tem `Gerenciar Servidor` **e** onde o bot
-já foi configurado (`/config ...`). As permissões do Discord são relidas a cada login.
-Quem não tem nenhum servidor vê um link para adicionar o bot.
-
-Contas listadas em `DASHBOARD_ADMIN_DISCORD_IDS` são super-admins e veem todos os servidores.
-
-### Configurando no servidor
-
-Ao entrar em um servidor, o bot envia uma mensagem curta com estes passos no canal de sistema
-(ou no primeiro canal de texto em que puder escrever).
-
-Todos os comandos exigem a permissão `Manage Server`.
+Todos os comandos exigem `Gerenciar Servidor`.
 
 | Comando | Efeito |
 | --- | --- |
@@ -72,7 +123,7 @@ Todos os comandos exigem a permissão `Manage Server`.
 | `/config voz-remover canal:Canal` | Remove o canal de voz permitido |
 | `/config tolerancia minutos:5` | Ajusta a tolerância de ausência |
 | `/config fuso fuso:America/Sao_Paulo` | Define o fuso horário do servidor (padrão `America/Fortaleza`) |
-| `/config limpeza segundos:30` | Apaga mensagens comuns do painel após esse tempo (`0` desativa) |
+| `/config limpeza segundos:30` | Apaga mensagens comuns do canal do painel após esse tempo (`0` desativa) |
 | `/config mostrar` | Mostra a configuração atual |
 
 ## Desenvolvimento local
@@ -81,154 +132,71 @@ Requer [uv](https://docs.astral.sh/uv/) e Docker (para o PostgreSQL).
 
 ```bash
 make install
-make env            # e ajuste o .env: POSTGRES_HOST=localhost
+make env            # e ajuste no .env: POSTGRES_HOST=localhost
 make db             # PostgreSQL via Docker
 make migrate
 make bot            # em um terminal
-make dashboard      # em outro (http://localhost:5000)
+make dashboard      # em outro, em http://localhost:5000
 ```
 
-Use `DEV_GUILD_ID` para sincronizar os comandos slash só no seu servidor de testes.
-`make help` lista todos os alvos.
+Para o login com Discord local, adicione `http://localhost:5000/auth/discord/callback` como redirect
+no Developer Portal e defina `DASHBOARD_SECURE_COOKIES=false` e `DASHBOARD_PROXY_FIX=false`. Use
+`DEV_GUILD_ID` para os comandos slash aparecerem na hora no seu servidor de testes.
+
+Para encher o dashboard com dados de exemplo, `make seed GUILD=<id do servidor> FUSO=Asia/Tokyo`
+cria três semanas de pontos no fuso escolhido. Para remover:
+`uv run python scripts/seed_demo.py --guild-id <id> --limpar`.
 
 | Alvo | Descrição |
 | --- | --- |
 | `make check` | Lint + testes (o mesmo que a CI) |
-| `make test` | Testes (`pytest`) |
+| `make test` | `pytest` |
 | `make lint` / `make format` | Ruff |
 | `make logs` | Logs dos containers |
-| `make seed GUILD=<id>` | Cria pontos de exemplo para um servidor (`FUSO=` opcional) |
 | `make down` | Para os containers |
-
-### Testando o login com Discord localmente
-
-Roteiro para ver contas, servidores vinculados e fusos horários funcionando na sua máquina.
-
-1. **Aplicação no Discord** ([Developer Portal](https://discord.com/developers/applications)):
-   - **Bot**: copie o token e deixe **Public Bot** ligado (para outras pessoas poderem convidá-lo).
-   - **OAuth2**: copie `Client ID` e `Client Secret` e adicione o redirect
-     `http://localhost:5000/auth/discord/callback`.
-2. **`.env`** (`make env` e depois ajuste):
-
-   ```env
-   DISCORD_TOKEN=<token do bot>
-   DISCORD_CLIENT_ID=<client id>
-   DISCORD_CLIENT_SECRET=<client secret>
-   DISCORD_REDIRECT_URI=http://localhost:5000/auth/discord/callback
-   POSTGRES_HOST=localhost
-   DASHBOARD_SECRET_KEY=<saída de make secret>
-   DASHBOARD_SECURE_COOKIES=false
-   DASHBOARD_PROXY_FIX=false
-   # Opcional: comandos slash aparecem na hora neste servidor
-   DEV_GUILD_ID=<id do seu servidor de testes>
-   ```
-3. **Suba tudo**: `make install`, `make db`, `make migrate` e, em dois terminais, `make bot` e
-   `make dashboard`.
-4. **Configure o servidor de testes** (em que você tem `Gerenciar Servidor`): convide o bot,
-   rode `/config painel`, `/config voz-adicionar` e `/config fuso`. Sem nenhum servidor, o
-   dashboard mostra o link de convite.
-5. **Entre** em `http://localhost:5000` com **Entrar com Discord**.
-6. **Dados de exemplo** (opcional): `make seed GUILD=<id do servidor> FUSO=Asia/Tokyo` cria
-   três semanas de pontos com início entre 8h e 10h no fuso escolhido e uma pessoa trabalhando
-   agora. `uv run python scripts/seed_demo.py --guild-id <id> --limpar` remove esses dados.
-
-O que conferir:
-
-- Com dois servidores com fusos diferentes, os horários de cada um aparecem no fuso dele (os
-  pontos de exemplo começam às 8h–10h locais), e os filtros **Hoje** e **Este Mês** seguem esse
-  fuso.
-- Uma conta sem `Gerenciar Servidor` (outra conta sua ou de alguém) não vê o servidor, e
-  `/?guild_id=<id de outro servidor>` responde 404.
-- Depois de mudar permissões no Discord, saia e entre de novo para recarregar a lista.
-
-`DEV_GUILD_ID` sincroniza os comandos apenas nesse servidor; para testar `/config` em um
-segundo servidor, deixe-o vazio (sincronização global).
 
 ## Configuração
 
-Toda a configuração vem de variáveis de ambiente (arquivo `.env`), validadas com Pydantic na
-inicialização. O [`.env.example`](.env.example) documenta cada uma.
+Toda a configuração vem de variáveis de ambiente, validadas com Pydantic na inicialização. O
+[`.env.example`](.env.example) documenta cada uma.
 
 | Variável | Descrição |
 | --- | --- |
 | `DISCORD_TOKEN` | Token do bot (obrigatório) |
-| `POSTGRES_*` / `DATABASE_URL` | Conexão com o banco. `POSTGRES_HOST` tem prioridade sobre `DATABASE_URL` |
+| `POSTGRES_*` / `DATABASE_URL` | Conexão com o banco. `POSTGRES_HOST` tem prioridade |
 | `DASHBOARD_SECRET_KEY` | Chave de sessão, com 32+ caracteres (obrigatória) |
-| `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | Login com Discord (OAuth2, obrigatório) |
+| `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | Login com Discord via OAuth2 (obrigatório) |
 | `DISCORD_REDIRECT_URI` | URL de retorno do OAuth2 cadastrada no Developer Portal |
-| `DASHBOARD_URL` | Endereço público do dashboard, citado na mensagem de boas-vindas (opcional) |
+| `DASHBOARD_URL` | Endereço público do dashboard, citado na mensagem de boas-vindas |
 | `DASHBOARD_ADMIN_DISCORD_IDS` | IDs de usuário do Discord, separados por vírgula, que veem todos os servidores |
 | `DASHBOARD_SECURE_COOKIES` | `true` exige HTTPS |
 | `DASHBOARD_PROXY_FIX` | `true` quando atrás de proxy reverso |
-| `DEV_GUILD_ID` | Sincroniza comandos slash em um único servidor |
-
-O dashboard recusa iniciar sem uma chave de sessão segura e sem `DISCORD_CLIENT_ID` e
-`DISCORD_CLIENT_SECRET`.
+| `DEV_GUILD_ID` | Sincroniza os comandos slash em um único servidor |
 
 ## Estrutura
 
 ```
 bate_ponto_bot/
-├── bot.py, commands.py, views.py   # bot, comandos slash e botões
+├── bot.py, commands.py, views.py   # bot, comandos slash e painel de botões
 ├── db.py, models.py                # acesso ao PostgreSQL (asyncpg)
-└── web/                            # dashboard Flask (app, queries, CSV, templates)
+├── utils.py                        # utilitários de tempo e fuso horário
+└── web/                            # dashboard Flask: app, queries, API do Discord, CSV, templates
 migrations/                         # Alembic
 tests/                              # pytest
-scripts/seed_demo.py                # pontos de exemplo para testar o dashboard
-scripts/deploy.sh                   # deploy na VM (usado pela pipeline)
+scripts/seed_demo.py                # dados de exemplo para o dashboard
+scripts/deploy.sh                   # script de deploy rodado na VM pela CI
+docs/deployment.md                  # configuração da CI/CD e do Cloudflare Tunnel
 ```
 
-## CI/CD
+## Decisões de projeto
 
-Pull requests e pushes em `main` rodam lint, testes e validação do Docker Compose. Um push em
-`main` também faz deploy: um runner do GitHub entra na VM por SSH e roda
-[`scripts/deploy.sh`](scripts/deploy.sh) (fetch, build, migrações, containers e `/healthz`).
-
-A VM não expõe nenhuma porta: o SSH passa pelo Cloudflare Tunnel que já serve o dashboard, e só
-quem tem o service token do Cloudflare Access consegue chegar até ele.
-
-1. Crie o ambiente `production` em **Settings → Environments**, com revisor obrigatório, e proteja
-   a `main` exigindo o check `Tests and quality`.
-2. **Na VM**, crie uma chave só para o deploy e autorize-a no usuário que roda o Docker:
-
-   ```bash
-   ssh-keygen -t ed25519 -f ~/github-deploy -N "" -C github-deploy
-   cat ~/github-deploy.pub >> ~/.ssh/authorized_keys
-   cat ~/github-deploy            # conteúdo de DEPLOY_SSH_KEY
-   rm ~/github-deploy ~/github-deploy.pub
-   echo "ssh.<seu-domínio> $(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"   # DEPLOY_KNOWN_HOSTS
-   ```
-
-   No GCP, se a VM usa OS Login (`enable-oslogin=TRUE`), o `authorized_keys` é ignorado: cadastre
-   a chave pública nos metadados da instância ou desative o OS Login.
-3. **No Cloudflare Zero Trust:**
-   - **Networks → Tunnels →** seu túnel **→ Public Hostname:** adicione `ssh.<seu-domínio>` com o
-     serviço `SSH` em `localhost:22`. (Túnel configurado por arquivo: inclua
-     `- hostname: ssh.<seu-domínio>` / `service: ssh://localhost:22` no `ingress` antes da regra
-     final e reinicie o `cloudflared`.)
-   - **Access → Service Auth → Service Tokens:** crie um token (por exemplo `github-deploy`) e
-     guarde o Client ID e o Client Secret.
-   - **Access → Applications:** crie uma aplicação *Self-hosted* para `ssh.<seu-domínio>` com uma
-     política de ação **Service Auth** que inclua esse token. Sem ela, o hostname do SSH fica
-     acessível para qualquer um pela Cloudflare.
-4. Em **Settings → Environments → production**, cadastre:
-   - **Secrets:** `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST` (`ssh.<seu-domínio>`),
-     `DEPLOY_USER`, `TUNNEL_SERVICE_TOKEN_ID` (Client ID) e `TUNNEL_SERVICE_TOKEN_SECRET`
-     (Client Secret);
-   - **Variables:** `DEPLOY_PATH` (clone do projeto na VM, por exemplo `/opt/bate-ponto`) e
-     `PRODUCTION_URL`.
-5. Mantenha o `.env` de produção apenas na VM, dentro de `DEPLOY_PATH`; a pipeline nunca o cria nem
-   o altera.
-
-Para um deploy manual, rode `bash scripts/deploy.sh <DEPLOY_PATH>` na VM.
-
-## Regra de ausência
-
-Quando alguém com ponto ativo sai de um canal de voz permitido, começa a tolerância configurada.
-Se voltar a tempo, o ponto continua. Se não, ele é encerrado no horário limite da tolerância; ao
-voltar depois disso, a pessoa recebe uma DM avisando que precisa iniciar um novo ponto. (O Discord
-só permite mensagens privadas no canal como respostas efêmeras a comandos ou botões, por isso os
-avisos automáticos vão por DM.)
+- **Por que os avisos automáticos vão por DM?** O Discord só permite mensagens privadas no canal
+  como respostas efêmeras a uma interação. Um aviso disparado pela saída de um canal de voz não tem
+  interação para responder, então vai por DM.
+- **Por que encerrar no horário limite, e não quando a pessoa volta?** Assim as horas ficam
+  honestas: o tempo fora do canal de voz além da tolerância nunca é contado.
+- **Fuso por servidor.** Os horários são guardados como `timestamptz` e convertidos só na exibição,
+  então os filtros "Hoje" e "Este Mês" funcionam para servidores em fusos diferentes.
 
 ## Licença
 

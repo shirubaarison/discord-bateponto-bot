@@ -1,7 +1,7 @@
 [project]
 name = "bate-ponto-discord"
 version = "0.1.0"
-description = "Bot de bate-ponto para Discord com PostgreSQL."
+description = "Bot de bate-ponto para Discord com dashboard web para acompanhar as horas da equipe."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
